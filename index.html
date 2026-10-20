@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aethel AI — Autonomous Compute Infrastructure</title>
+  <meta name="description" content="Aethel routes autonomous compute tasks and low-latency inference across decentralized GPU clusters. Optimized for automated execution rails on Robinhood Chain." />
+  <meta property="og:title" content="Aethel AI — Autonomous Compute Infrastructure" />
+  <meta property="og:description" content="Decentralized GPU routing and low-latency inference on Robinhood Chain." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          colors: {
+            terminal: {
+              bg: '#0a0a0f',
+              surface: '#111118',
+              border: '#1e1e2e',
+              green: '#00ff9d',
+              cyan: '#00e5ff',
+              amber: '#ffb800',
+              dim: '#4a4a5a',
+              text: '#c9c9d9',
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s ease-in-out infinite',
+            'blink': 'blink 1.2s step-end infinite',
+            'glow': 'glow 2s ease-in-out infinite alternate',
+            'scan': 'scan 4s linear infinite',
+            'float': 'float 6s ease-in-out infinite',
+          },
+          keyframes: {
+            blink: {
+              '0%, 50%': { opacity: '1' },
+              '51%, 100%': { opacity: '0' },
+            },
+            glow: {
+              '0%': { boxShadow: '0 0 5px rgba(0,255,157,0.1), 0 0 20px rgba(0,255,157,0.05)' },
+              '100%': { boxShadow: '0 0 10px rgba(0,255,157,0.2), 0 0 40px rgba(0,255,157,0.1)' },
+            },
+            scan: {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(100%)' },
+            },
+            float: {
+              '0%, 100%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-8px)' },
+            },
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body class="bg-terminal-bg text-terminal-text font-mono antialiased overflow-x-hidden">
+
+  <!-- ═══════════════ SCAN OVERLAY ═══════════════ -->
+  <div class="pointer-events-none fixed inset-0 z-50 overflow-hidden opacity-[0.03]">
+    <div class="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(0,255,157,0.08)_2px,rgba(0,255,157,0.08)_4px)]"></div>
+  </div>
+
+  <!-- ═══════════════ SYSTEM STATUS HEADER ═══════════════ -->
+  <header class="fixed top-0 left-0 right-0 z-40 border-b border-terminal-border bg-terminal-bg/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-12">
+
+        <!-- Left: Logo & Status -->
+        <div class="flex items-center gap-4">
+          <div class="flex items-center gap-2">
+            <div class="relative">
+              <div class="w-2 h-2 rounded-full bg-terminal-green"></div>
+              <div class="absolute inset-0 w-2 h-2 rounded-full bg-terminal-green animate-ping opacity-75"></div>
+            </div>
+            <span class="text-terminal-green text-xs font-semibold tracking-widest uppercase">AETHEL.AI</span>
+          </div>
+          <div class="hidden sm:block h-4 w-px bg-terminal-border"></div>
+          <span class="hidden sm:inline text-[10px] text-terminal-dim tracking-wide">
+            SYS <span class="text-terminal-green">ONLINE</span> · NODE <span id="nodeCount" class="text-terminal-cyan">—</span> · LATENCY <span id="latencyMs" class="text-terminal-amber">—</span>
+          </span>
+        </div>
+
+        <!-- Center: Uptime Clock -->
+        <div class="hidden md:flex items-center gap-2 text-[10px] text-terminal-dim">
+          <span class="tracking-widest">UPTIME</span>
+          <span id="uptimeClock" class="text-terminal-text tabular-nums font-medium">00:00:00:00</span>
+        </div>
+
+        <!-- Right: Network & Block -->
+        <div class="flex items-center gap-4">
+          <div class="hidden sm:flex items-center gap-2 text-[10px]">
+            <span class="text-terminal-dim">BLOCK</span>
+            <span id="blockHeight" class="text-terminal-cyan tabular-nums font-medium">—</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <div class="w-1.5 h-1.5 rounded-full bg-terminal-green animate-pulse-slow"></div>
+            <span class="text-[10px] text-terminal-green tracking-wide font-medium">ROBINHOOD CHAIN</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══════════════ MAIN CONTENT ═══════════════ -->
+  <main class="relative">
+
+    <!-- Grid Background -->
+    <div class="absolute inset-0 bg-[linear-gradient(rgba(30,30,46,0.3)_1px,transparent_1px),linear-gradient(90deg,rgba(30,30,46,0.3)_1px,transparent_1px)] bg-[size:60px_60px] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_70%)]"></div>
+
+    <!-- ═══════════ HERO SECTION ═══════════ -->
+    <section class="relative pt-28 pb-20 sm:pt-36 sm:pb-28 px-4 sm:px-6 lg:px-8">
+      <div class="max-w-4xl mx-auto text-center">
+
+        <!-- Terminal Prompt -->
+        <div class="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-full border border-terminal-border bg-terminal-surface/60 backdrop-blur">
+          <span class="text-terminal-green text-xs">▸</span>
+          <span class="text-xs text-terminal-dim">initializing aethel protocol</span>
+          <span class="text-terminal-green text-xs animate-blink">_</span>
+        </div>
+
+        <!-- Title -->
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight mb-6">
+          <span class="text-white">Autonomous</span>
+          <br />
+          <span class="bg-gradient-to-r from-terminal-green via-terminal-cyan to-terminal-green bg-clip-text text-transparent">
+            Compute Infrastructure
+          </span>
+        </h1>
+
+        <!-- Description -->
+        <p class="max-w-2xl mx-auto text-base sm:text-lg text-terminal-text/80 leading-relaxed mb-10">
+          Aethel routes autonomous compute tasks and low-latency inference across decentralized GPU clusters. Optimized for automated execution rails on Robinhood Chain.
+        </p>
+
+        <!-- CTA Buttons -->
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <a
+            href="https://pons.trade"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group relative inline-flex items-center gap-2 px-8 py-3.5 bg-terminal-green/10 border border-terminal-green/40 rounded text-terminal-green font-semibold text-sm tracking-wide hover:bg-terminal-green/20 hover:border-terminal-green/60 transition-all duration-300 animate-glow"
+          >
+            <span>LAUNCH ON PONS</span>
+            <svg class="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+          </a>
+          <a
+            href="#architecture"
+            class="inline-flex items-center gap-2 px-8 py-3.5 border border-terminal-border rounded text-terminal-dim text-sm tracking-wide hover:text-terminal-text hover:border-terminal-dim transition-all duration-300"
+          >
+            <span>VIEW ARCHITECTURE</span>
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Decorative Glow -->
+      <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-terminal-green/[0.03] rounded-full blur-[120px] pointer-events-none"></div>
+    </section>
+
+    <!-- ═══════════ STATS / METRICS CARD ═══════════ -->
+    <section class="relative px-4 sm:px-6 lg:px-8 pb-20 sm:pb-28">
+      <div class="max-w-4xl mx-auto">
+
+        <!-- Section Label -->
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-1.5 h-1.5 rounded-full bg-terminal-cyan"></div>
+          <span class="text-[11px] text-terminal-dim tracking-[0.2em] uppercase">Protocol Metrics</span>
+          <div class="flex-1 h-px bg-terminal-border"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-px bg-terminal-border rounded-lg overflow-hidden border border-terminal-border">
+
+          <!-- Ticker -->
+          <div class="bg-terminal-surface p-6 sm:p-8 group hover:bg-terminal-surface/80 transition-colors">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-terminal-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+              <span class="text-[10px] text-terminal-dim tracking-[0.15em] uppercase">Ticker</span>
+            </div>
+            <div class="text-2xl sm:text-3xl font-bold text-terminal-green tracking-tight">$AETHEL</div>
+            <div class="mt-2 text-[11px] text-terminal-dim">ERC-20 · Robinhood Chain</div>
+          </div>
+
+          <!-- Base Asset Pair -->
+          <div class="bg-terminal-surface p-6 sm:p-8 group hover:bg-terminal-surface/80 transition-colors">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-terminal-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+              <span class="text-[10px] text-terminal-dim tracking-[0.15em] uppercase">Base Asset Pair</span>
+            </div>
+            <div class="text-2xl sm:text-3xl font-bold text-terminal-cyan tracking-tight">NVDA</div>
+            <div class="mt-2 text-[11px] text-terminal-dim">Stock Token · Pons Launchpad</div>
+          </div>
+
+          <!-- Safety Protocol -->
+          <div class="bg-terminal-surface p-6 sm:p-8 group hover:bg-terminal-surface/80 transition-colors">
+            <div class="flex items-center gap-2 mb-3">
+              <svg class="w-4 h-4 text-terminal-amber" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+              <span class="text-[10px] text-terminal-dim tracking-[0.15em] uppercase">Safety Protocol</span>
+            </div>
+            <div class="text-2xl sm:text-3xl font-bold text-terminal-amber tracking-tight">Locked</div>
+            <div class="mt-2 text-[11px] text-terminal-dim">Buyback-Locked · Immutable</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ ARCHITECTURE FEATURE CARDS ═══════════ -->
+    <section id="architecture" class="relative px-4 sm:px-6 lg:px-8 pb-20 sm:pb-28">
+      <div class="max-w-4xl mx-auto">
+
+        <!-- Section Label -->
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-1.5 h-1.5 rounded-full bg-terminal-green"></div>
+          <span class="text-[11px] text-terminal-dim tracking-[0.2em] uppercase">Core Architecture</span>
+          <div class="flex-1 h-px bg-terminal-border"></div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+          <!-- Card 1: Autonomous Routing -->
+          <div class="group relative bg-terminal-surface border border-terminal-border rounded-lg p-6 hover:border-terminal-green/30 transition-all duration-500 overflow-hidden">
+            <!-- Top accent line -->
+            <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-terminal-green/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+
+            <!-- Icon -->
+            <div class="w-10 h-10 rounded-lg bg-terminal-green/10 border border-terminal-green/20 flex items-center justify-center mb-5">
+              <svg class="w-5 h-5 text-terminal-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+              </svg>
+            </div>
+
+            <!-- Content -->
+            <h3 class="text-sm font-bold text-white tracking-wide mb-2">AUTONOMOUS ROUTING</h3>
+            <p class="text-xs text-terminal-dim leading-relaxed mb-4">
+              Intelligent task distribution across GPU clusters. Real-time load balancing with sub-second failover and zero-downtime reallocation.
+            </p>
+
+            <!-- Terminal-style detail -->
+            <div class="flex items-center gap-2 text-[10px] text-terminal-green/60">
+              <span class="text-terminal-green">▸</span>
+              <span class="tabular-nums" id="routingThroughput">0 tasks/s</span>
+            </div>
+          </div>
+
+          <!-- Card 2: Instant Inference -->
+          <div class="group relative bg-terminal-surface border border-terminal-border rounded-lg p-6 hover:border-terminal-cyan/30 transition-all duration-500 overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-terminal-cyan/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+
+            <div class="w-10 h-10 rounded-lg bg-terminal-cyan/10 border border-terminal-cyan/20 flex items-center justify-center mb-5">
+              <svg class="w-5 h-5 text-terminal-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+              </svg>
+            </div>
+
+            <h3 class="text-sm font-bold text-white tracking-wide mb-2">INSTANT INFERENCE</h3>
+            <p class="text-xs text-terminal-dim leading-relaxed mb-4">
+              Ultra-low-latency model serving with edge-optimized inference pipelines. Batch processing at wire speed across distributed endpoints.
+            </p>
+
+            <div class="flex items-center gap-2 text-[10px] text-terminal-cyan/60">
+              <span class="text-terminal-cyan">▸</span>
+              <span class="tabular-nums" id="inferenceLatency">0 ms avg</span>
+            </div>
+          </div>
+
+          <!-- Card 3: Cross-Asset Settlement -->
+          <div class="group relative bg-terminal-surface border border-terminal-border rounded-lg p-6 hover:border-terminal-amber/30 transition-all duration-500 overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-terminal-amber/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+
+            <div class="w-10 h-10 rounded-lg bg-terminal-amber/10 border border-terminal-amber/20 flex items-center justify-center mb-5">
+              <svg class="w-5 h-5 text-terminal-amber" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+            </div>
+
+            <h3 class="text-sm font-bold text-white tracking-wide mb-2">CROSS-ASSET SETTLEMENT</h3>
+            <p class="text-xs text-terminal-dim leading-relaxed mb-4">
+              Atomic settlement between compute credits and tokenized assets. Native NVDA pair with deterministic finality on every execution.
+            </p>
+
+            <div class="flex items-center gap-2 text-[10px] text-terminal-amber/60">
+              <span class="text-terminal-amber">▸</span>
+              <span class="tabular-nums" id="settlementTime">0 ms finality</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ LIVE TERMINAL OUTPUT ═══════════ -->
+    <section class="relative px-4 sm:px-6 lg:px-8 pb-20 sm:pb-28">
+      <div class="max-w-4xl mx-auto">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-1.5 h-1.5 rounded-full bg-terminal-amber"></div>
+          <span class="text-[11px] text-terminal-dim tracking-[0.2em] uppercase">Live System Log</span>
+          <div class="flex-1 h-px bg-terminal-border"></div>
+        </div>
+
+        <div class="bg-terminal-surface border border-terminal-border rounded-lg overflow-hidden">
+          <!-- Terminal Title Bar -->
+          <div class="flex items-center gap-2 px-4 py-2.5 border-b border-terminal-border bg-terminal-bg/50">
+            <div class="flex gap-1.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-red-500/60"></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-yellow-500/60"></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-green-500/60"></div>
+            </div>
+            <span class="text-[10px] text-terminal-dim ml-2">aethel-node-0 — system.log</span>
+          </div>
+          <!-- Log Lines -->
+          <div id="terminalLog" class="p-4 h-48 overflow-hidden text-[11px] leading-relaxed space-y-1">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ BOTTOM CTA ═══════════ -->
+    <section class="relative px-4 sm:px-6 lg:px-8 pb-24 sm:pb-32">
+      <div class="max-w-2xl mx-auto text-center">
+        <div class="inline-flex items-center gap-2 mb-6 px-3 py-1.5 rounded-full border border-terminal-green/20 bg-terminal-green/5">
+          <div class="w-1.5 h-1.5 rounded-full bg-terminal-green animate-pulse"></div>
+          <span class="text-[10px] text-terminal-green tracking-widest uppercase">Live on Pons Launchpad</span>
+        </div>
+
+        <h2 class="text-2xl sm:text-3xl font-bold text-white mb-4 tracking-tight">
+          Enter the Execution Layer
+        </h2>
+        <p class="text-sm text-terminal-dim mb-8 max-w-md mx-auto">
+          Trade $AETHEL paired with NVDA Token on the Pons terminal. Buyback-locked. Zero extraction.
+        </p>
+
+        <a
+          href="https://pons.trade"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="group inline-flex items-center gap-3 px-10 py-4 bg-terminal-green text-terminal-bg font-bold text-sm tracking-wider rounded hover:bg-terminal-green/90 transition-all duration-300 shadow-[0_0_30px_rgba(0,255,157,0.15)] hover:shadow-[0_0_50px_rgba(0,255,157,0.25)]"
+        >
+          <span>TRADE ON PONS</span>
+          <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75" /></svg>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══════════════ FOOTER ═══════════════ -->
+  <footer class="border-t border-terminal-border py-8 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-terminal-dim">© 2026 Aethel AI</span>
+        <span class="text-terminal-border">·</span>
+        <span class="text-[10px] text-terminal-dim tracking-wide">Robinhood Chain</span>
+      </div>
+      <div class="flex items-center gap-2 text-[10px] text-terminal-dim">
+        <div class="w-1.5 h-1.5 rounded-full bg-terminal-green"></div>
+        <span>All systems operational</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

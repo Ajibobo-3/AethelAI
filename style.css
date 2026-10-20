@@ -1,0 +1,94 @@
+/* ═══════════════════════════════════════════════
+   AETHEL AI — Custom Styles
+   Supplements Tailwind CSS utility classes
+   ═══════════════════════════════════════════════ */
+
+/* ── Base ─────────────────────────────────────── */
+::selection {
+  background: rgba(0, 255, 157, 0.2);
+  color: #fff;
+}
+
+::-moz-selection {
+  background: rgba(0, 255, 157, 0.2);
+  color: #fff;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #1e1e2e #0a0a0f;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e1e2e;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2a2a3e;
+}
+
+/* ── Log Line Animation ──────────────────────── */
+.log-line {
+  animation: fadeInLog 0.3s ease-out forwards;
+  opacity: 0;
+}
+
+@keyframes fadeInLog {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Gradient Text Shimmer ───────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.text-shimmer {
+  background-size: 200% auto;
+  animation: shimmer 8s linear infinite;
+}
+
+/* ── Noise Grain Overlay ─────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* ── Fade-in on Scroll ───────────────────────── */
+.fade-in-section {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.fade-in-section.visible {
+  opacity: 1;
+  transform: translateY(0);
+}

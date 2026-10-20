@@ -1,0 +1,10 @@
+{
+  "name": "aethel-ai",
+  "version": "1.0.0",
+  "description": "Aethel AI — Autonomous Compute Infrastructure on Robinhood Chain",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  }
+}
