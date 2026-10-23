@@ -1,16 +1,18 @@
 const { send, fail, database, safeEqual } = require('../../_lib/gateway');
 
 module.exports = async function handler(req, res) {
-  if (req.method !== 'DELETE') {
-    res.setHeader('Allow', 'DELETE');
-    return fail(res, 405, 'method_not_allowed', 'Use DELETE to disable an API key.');
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return fail(res, 405, 'method_not_allowed', 'Use POST to disable an API key.');
   }
   const adminKey = process.env.AETHEL_ADMIN_KEY;
   if (!adminKey || !safeEqual(req.headers['x-aethel-admin-key'], adminKey)) {
     return fail(res, 401, 'unauthorized', 'A valid admin key is required.');
   }
-  const id = req.query?.id;
-  if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) return fail(res, 400, 'invalid_id', 'Provide a valid API key ID.');
+  const id = req.body?.id;
+  if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return fail(res, 400, 'invalid_id', 'Provide a valid API key ID.');
+  }
   try {
     const rows = await database(`aethel_api_keys?id=eq.${id}&disabled_at=is.null`, {
       method: 'PATCH',

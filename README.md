@@ -19,7 +19,7 @@ Set `AETHEL_DAILY_REQUEST_LIMIT` to change the default of 100 attempted requests
 Create a key from a trusted terminal:
 
 ```sh
-curl -X POST https://aethelai.online/api/v1/keys \
+curl -X POST https://www.aethelai.online/api/v1/keys \
   -H "X-Aethel-Admin-Key: $AETHEL_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name":"my-app"}'
@@ -28,14 +28,16 @@ curl -X POST https://aethelai.online/api/v1/keys \
 The generated customer key is returned once. Store it in your application’s server-side secret manager. The database stores only the SHA-256 hash. Disable an active key using its returned `id`:
 
 ```sh
-curl -X DELETE "https://aethelai.online/api/v1/keys/KEY_ID" \
-  -H "X-Aethel-Admin-Key: $AETHEL_ADMIN_KEY"
+curl -X POST https://www.aethelai.online/api/v1/keys/revoke \
+  -H "X-Aethel-Admin-Key: $AETHEL_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"KEY_ID"}'
 ```
 
 ## Send a chat completion
 
 ```sh
-curl https://aethelai.online/api/v1/chat/completions \
+curl https://www.aethelai.online/api/v1/chat/completions \
   -H "Authorization: Bearer $AETHEL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
@@ -45,7 +47,7 @@ Supported routes:
 
 - `GET /api/health` — checks database reachability and provider configuration.
 - `POST /api/v1/keys` — creates a customer key with the admin secret.
-- `DELETE /api/v1/keys/:id` — disables a customer key with the admin secret.
+- `POST /api/v1/keys/revoke` — disables a customer key with the admin secret; send the key `id` in the JSON body.
 - `POST /api/v1/chat/completions` — authenticated non-streaming chat completion.
 
 This API currently requires the Vercel deployment because the functions live under `api/`. For local API development, use `npm run dev` (or `npx vercel dev`) so those functions are served. Put `AETHEL_ADMIN_KEY` in the ignored local `.env.local` file or the local terminal environment, then run `npm run smoke` to create a temporary customer key, make one small inference request, and revoke the key. The script never prints the key. Copy `.env.example` to a local environment file and fill it with development credentials. Never commit real credentials.

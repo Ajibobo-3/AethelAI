@@ -1,6 +1,8 @@
 'use strict';
 
-const base = (process.env.AETHEL_API_BASE_URL || 'https://aethelai.online').replace(/\/$/, '');
+// Use the canonical host directly. Fetch follows apex -> www redirects, and
+// cross-origin redirects can strip Authorization from inference requests.
+const base = (process.env.AETHEL_API_BASE_URL || 'https://www.aethelai.online').replace(/\/$/, '');
 const adminKey = process.env.AETHEL_ADMIN_KEY || localAdminKey();
 const model = process.env.AETHEL_SMOKE_MODEL || 'gpt-4o-mini';
 
@@ -71,8 +73,10 @@ async function main() {
     inferenceError = new Error('The inference request failed or timed out.');
   } finally {
     try {
-      const revokeResponse = await jsonRequest(`${base}/api/v1/keys/${created.id}`, {
-        method: 'DELETE', headers: { 'X-Aethel-Admin-Key': adminKey },
+      const revokeResponse = await jsonRequest(`${base}/api/v1/keys/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Aethel-Admin-Key': adminKey },
+        body: JSON.stringify({ id: created.id }),
       });
       const revokeBody = await readJson(revokeResponse);
       revoked = revokeResponse.ok && revokeBody.status === 'disabled';

@@ -31,14 +31,14 @@
 
     <h2>3. Create a customer key</h2>
     <p>Run this from a trusted terminal. The admin key authorizes key creation. The generated customer key is returned once; store it securely.</p>
-    <div class="docs-code"><pre>curl -X POST https://aethelai.online/api/v1/keys \
+    <div class="docs-code"><pre>curl -X POST https://www.aethelai.online/api/v1/keys \
   -H "X-Aethel-Admin-Key: $AETHEL_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name":"my-app"}'</pre></div>
     <p>Save the returned <code>api_key</code> as <code>AETHEL_API_KEY</code> in your application’s server-side secrets. The database stores only its SHA-256 hash. Never put the admin key, provider key, or customer key in frontend code.</p>
 
     <h2>4. Send a chat completion</h2>
-    <div class="docs-code"><pre>curl https://aethelai.online/api/v1/chat/completions \
+    <div class="docs-code"><pre>curl https://www.aethelai.online/api/v1/chat/completions \
   -H "Authorization: Bearer $AETHEL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -48,7 +48,7 @@
     <p>The response follows the OpenAI chat completion shape. The gateway records the request status and token counts returned by the upstream provider. The default limit is 100 attempted requests per UTC day per key; provider errors also count. Set <code>AETHEL_DAILY_REQUEST_LIMIT</code> to change it. Output is capped at 2,048 tokens by default; configure <code>AETHEL_MAX_OUTPUT_TOKENS</code> to adjust that ceiling.</p>
 
     <h2>Routes and current boundaries</h2>
-    <table class="docs-endpoints"><tbody><tr><td><code>GET</code></td><td><code>/api/health</code></td><td>Service and dependency readiness</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys</code></td><td>Create a customer key (admin secret required)</td></tr><tr><td><code>DELETE</code></td><td><code>/api/v1/keys/:id</code></td><td>Disable a customer key (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/chat/completions</code></td><td>Authenticated, non-streaming chat completion</td></tr></tbody></table>
+    <table class="docs-endpoints"><tbody><tr><td><code>GET</code></td><td><code>/api/health</code></td><td>Service and dependency readiness</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys</code></td><td>Create a customer key (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys/revoke</code></td><td>Disable a customer key using its ID from the JSON body (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/chat/completions</code></td><td>Authenticated, non-streaming chat completion</td></tr></tbody></table>
     <p>Streaming, payment collection, refunds, and distributed GPU execution are not implemented in this first release. Provider fallback is limited to a Groq retry after a primary HTTP 429, and requires the feature flag and a model mapping. Upstream usage and costs are charged by the configured provider account.</p>
     <div class="docs-footer">Aethel AI · <a href="/">Home</a> · <a href="/api/health">API health</a></div>
   </main>
