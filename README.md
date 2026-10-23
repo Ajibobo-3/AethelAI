@@ -1,73 +1,20 @@
-# Aethel AI — Autonomous Compute Infrastructure
+# Aethel AI — Decentralized Inference Gateway
 
-> Decentralized GPU routing and low-latency inference on Robinhood Chain.  
-> Token: **$AETHEL** · Pair: **NVDA Token** · Launchpad: **Pons**
+Aethel AI is a static landing page for a proposed pay-per-use inference gateway and distributed GPU network. The page describes the product direction and includes an explicitly simulated telemetry interface; it does not connect to a production inference API or live network feed.
 
----
+## Project structure
 
-## Project Structure
+- `index.html` — landing page content and layout
+- `style.css` — responsive visual system
+- `script.js` — illustrative telemetry animation and mobile navigation
+- `vercel.json` / `netlify.toml` — static hosting configuration
 
-```
-AethelAI/
-├── index.html        # Landing page
-├── style.css         # Custom styles (scanlines, scrollbar, animations)
-├── script.js         # Live terminal engine (telemetry, logs, counters)
-├── vercel.json       # Vercel deployment config
-├── netlify.toml      # Netlify deployment config
-├── package.json      # Minimal manifest
-└── README.md         # This file
-```
+## Local preview
 
-## Local Development
+Run `python3 -m http.server 8000` in this directory, then visit `http://localhost:8000`.
 
-```bash
-# Option 1: Python
-python3 -m http.server 8000
+## Deployment
 
-# Option 2: Node
-npx serve .
-```
+The repository is connected to Vercel for static deployment. Pushing to the production branch can trigger the configured deployment. Netlify configuration is also included.
 
-Then open [http://localhost:8000](http://localhost:8000).
-
-## Deploy to Vercel
-
-1. Push this repo to GitHub.
-2. Go to [vercel.com](https://vercel.com) → **New Project** → Import the repo.
-3. Framework Preset: **Other** (auto-detected via `vercel.json`).
-4. Click **Deploy**. Done.
-
-## Deploy to Netlify
-
-1. Push this repo to GitHub.
-2. Go to [netlify.com](https://app.netlify.com) → **Add new site** → Import from Git.
-3. Build command: *(leave blank)*  
-   Publish directory: `.`
-4. Click **Deploy site**. Done.
-
-## Connect Namecheap Domain
-
-### For Vercel:
-1. In Vercel dashboard → **Settings** → **Domains** → Add your domain.
-2. In Namecheap → **Advanced DNS** → Add:
-   - **Type:** CNAME | **Host:** @ | **Value:** `cname.vercel-dns.com`
-   - **Type:** CNAME | **Host:** www | **Value:** `cname.vercel-dns.com`
-3. Wait for DNS propagation (up to 48h, usually minutes).
-
-### For Netlify:
-1. In Netlify dashboard → **Domain settings** → **Add custom domain**.
-2. In Namecheap → **Advanced DNS** → Add:
-   - **Type:** CNAME | **Host:** @ | **Value:** `<your-site>.netlify.app`
-   - **Type:** CNAME | **Host:** www | **Value:** `<your-site>.netlify.app`
-3. Enable **HTTPS** in Netlify (auto via Let's Encrypt).
-
-## Tech Stack
-
-- **HTML5** — Semantic, accessible markup
-- **Tailwind CSS** — Utility-first styling (CDN)
-- **JetBrains Mono** — Monospace terminal font (Google Fonts)
-- **Vanilla JS** — Zero dependencies, live telemetry simulation
-
-## License
-
-MIT
+Gateway API access and documentation links are placeholders for a future release. The request snippet on the landing page is illustrative and does not imply that the endpoint is currently available.

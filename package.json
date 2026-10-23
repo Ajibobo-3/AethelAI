@@ -1,7 +1,7 @@
 {
   "name": "aethel-ai",
   "version": "1.0.0",
-  "description": "Aethel AI — Autonomous Compute Infrastructure on Robinhood Chain",
+  "description": "Aethel AI — decentralized inference gateway landing page",
   "private": true,
   "scripts": {
     "dev": "npx serve .",
