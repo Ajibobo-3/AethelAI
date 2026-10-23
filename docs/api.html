@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0b0a" />
+  <title>Aethel AI — API Quickstart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    .docs-wrap{max-width:850px;margin:76px auto 100px}.docs-back{color:#d7c580;font-size:11px}.docs-wrap h1{font-size:48px;margin:24px 0 12px}.docs-lede{color:#a5a298;line-height:1.8;max-width:680px}.docs-note{margin:25px 0;padding:17px 19px;border:1px solid #5a4b26;border-radius:7px;background:#17150f;color:#c7c1ae;font-size:11px;line-height:1.8}.docs-wrap h2{margin:44px 0 12px;font-size:21px;letter-spacing:-.04em}.docs-wrap p,.docs-wrap li{color:#a5a298;font-size:12px;line-height:1.8}.docs-wrap ol{padding-left:20px}.docs-wrap li{padding:3px 0}.docs-code{position:relative;margin:14px 0 22px;padding:18px;border:1px solid #302f28;border-radius:7px;background:#10100e;overflow:auto}.docs-code pre{margin:0;white-space:pre-wrap;word-break:break-word;color:#e2dfd4;font:10px/1.8 var(--mono)}.docs-endpoints{width:100%;border-collapse:collapse;margin-top:15px;font-size:11px}.docs-endpoints td{border-top:1px solid #302f28;padding:12px 8px;color:#b4b1a6}.docs-endpoints code{color:#dfc56a;font:10px var(--mono)}.docs-footer{margin-top:50px;padding-top:20px;border-top:1px solid #292821;color:#77746c;font-size:10px}.docs-footer a{color:#d7c580}
+    @media(max-width:720px){.docs-wrap{width:calc(100% - 40px);margin:48px auto 70px}.docs-wrap h1{font-size:38px}}
+  </style>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">A</span><span>AETHEL<span class="brand-muted">.AI</span></span></a><a class="button button-small button-ghost" href="/api/health">Service health <span>↗</span></a></header>
+  <main class="docs-wrap">
+    <a class="docs-back" href="/">← Back to Aethel AI</a>
+    <div class="eyebrow" style="margin-top:30px"><span class="eyebrow-line"></span> API QUICKSTART · V1</div>
+    <h1>Make your first request.</h1>
+    <p class="docs-lede">Aethel provides an OpenAI-compatible chat completions route with customer API keys, a daily request quota, and persistent usage records.</p>
+    <div class="docs-note"><strong>Deployment setup is required.</strong> The production API will report <code>setup_required</code> until the database migration is applied and Vercel environment variables are configured. This release forwards to one configured provider. It does not bypass that provider’s rate limits, charge customers, or route across distributed GPUs.</div>
+
+    <h2>1. Configure the service</h2>
+    <ol><li>Create a Supabase project and run <code>supabase/migrations/202610230001_aethel_gateway.sql</code> in the Supabase SQL Editor.</li><li>Add the variables from <code>.env.example</code> to the Vercel project. Use your Supabase project URL and service role key, a provider API key, and a long random <code>AETHEL_ADMIN_KEY</code>. Keep these secrets server-side.</li><li>Set <code>AETHEL_ALLOWED_MODELS</code> to the comma-separated models enabled for your provider account. The default is <code>gpt-4o-mini</code>.</li><li>Redeploy, then confirm <a href="/api/health">/api/health</a> reports <code>ready</code>.</li></ol>
+
+    <h2>2. Create a customer key</h2>
+    <p>Run this from a trusted terminal. The admin key authorizes key creation. The generated customer key is returned once; store it securely.</p>
+    <div class="docs-code"><pre>curl -X POST https://aethelai.online/api/v1/keys \
+  -H "X-Aethel-Admin-Key: $AETHEL_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-app"}'</pre></div>
+    <p>Save the returned <code>api_key</code> as <code>AETHEL_API_KEY</code> in your application’s server-side secrets. The database stores only its SHA-256 hash. Never put the admin key, provider key, or customer key in frontend code.</p>
+
+    <h2>3. Send a chat completion</h2>
+    <div class="docs-code"><pre>curl https://aethelai.online/api/v1/chat/completions \
+  -H "Authorization: Bearer $AETHEL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role":"user","content":"Hello from Aethel"}]
+  }'</pre></div>
+    <p>The response follows the OpenAI chat completion shape. The gateway records the request status and token counts returned by the upstream provider. The default limit is 100 attempted requests per UTC day per key; provider errors also count. Set <code>AETHEL_DAILY_REQUEST_LIMIT</code> to change it. Output is capped at 2,048 tokens by default; configure <code>AETHEL_MAX_OUTPUT_TOKENS</code> to adjust that ceiling.</p>
+
+    <h2>Routes and current boundaries</h2>
+    <table class="docs-endpoints"><tbody><tr><td><code>GET</code></td><td><code>/api/health</code></td><td>Service and dependency readiness</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys</code></td><td>Create a customer key (admin secret required)</td></tr><tr><td><code>DELETE</code></td><td><code>/api/v1/keys/:id</code></td><td>Disable a customer key (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/chat/completions</code></td><td>Authenticated, non-streaming chat completion</td></tr></tbody></table>
+    <p>One provider is configured per deployment. Streaming, automatic provider failover, payment collection, refunds, and distributed GPU execution are not implemented in this first release. Upstream usage and costs are charged by the configured provider account.</p>
+    <div class="docs-footer">Aethel AI · <a href="/">Home</a> · <a href="/api/health">API health</a></div>
+  </main>
+</body>
+</html>

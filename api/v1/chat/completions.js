@@ -1,0 +1,109 @@
+const { configuration, send, fail, database, bearer, hash } = require('../../_lib/gateway');
+
+const allowedFields = ['temperature', 'top_p', 'max_tokens', 'max_completion_tokens', 'stop', 'response_format', 'tools', 'tool_choice', 'parallel_tool_calls', 'seed'];
+
+module.exports = async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return fail(res, 405, 'method_not_allowed', 'Use POST to create a chat completion.');
+  }
+  const cfg = configuration();
+  const key = bearer(req);
+  if (!key) return fail(res, 401, 'unauthorized', 'Provide an Aethel API key as a Bearer token.');
+  if (!cfg.supabaseUrl || !cfg.supabaseKey || !cfg.providerKey) {
+    return fail(res, 503, 'setup_required', 'The gateway is waiting for its database and inference provider configuration.');
+  }
+  const length = Number(req.headers['content-length'] || 0);
+  if (length > 65536) return fail(res, 413, 'request_too_large', 'Requests must be smaller than 64 KB.');
+  const input = req.body;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return fail(res, 400, 'invalid_request', 'Send a JSON request body.');
+  if (Buffer.byteLength(JSON.stringify(input), 'utf8') > 65536) return fail(res, 413, 'request_too_large', 'Requests must be smaller than 64 KB.');
+  if (input.stream === true) return fail(res, 400, 'streaming_not_supported', 'Streaming is not available in this gateway release.');
+  if (input.max_tokens !== undefined && input.max_completion_tokens !== undefined) {
+    return fail(res, 400, 'invalid_token_limit', 'Provide only one output token limit field.');
+  }
+  const requestedTokenLimit = input.max_completion_tokens ?? input.max_tokens;
+  if (requestedTokenLimit !== undefined && (!Number.isInteger(requestedTokenLimit) || requestedTokenLimit < 1 || requestedTokenLimit > cfg.maxOutputTokens)) {
+    return fail(res, 400, 'invalid_token_limit', `The output token limit must be between 1 and ${cfg.maxOutputTokens}.`);
+  }
+  if (typeof input.model !== 'string' || !cfg.models.includes(input.model)) {
+    return fail(res, 400, 'model_not_allowed', `Choose one of the enabled models: ${cfg.models.join(', ')}.`);
+  }
+  if (!Array.isArray(input.messages) || input.messages.length < 1 || input.messages.length > 50) {
+    return fail(res, 400, 'invalid_messages', 'Provide between 1 and 50 chat messages.');
+  }
+  for (const message of input.messages) {
+    if (!message || !['system', 'developer', 'user', 'assistant', 'tool'].includes(message.role) || message.content == null) {
+      return fail(res, 400, 'invalid_messages', 'Each message needs a supported role and content.');
+    }
+  }
+
+  let apiKeyRow;
+  try {
+    const rows = await database(`aethel_api_keys?key_hash=eq.${hash(key)}&disabled_at=is.null&select=id,name&limit=1`);
+    apiKeyRow = rows?.[0];
+  } catch (_) {
+    return fail(res, 503, 'service_unavailable', 'The key service is temporarily unavailable.');
+  }
+  if (!apiKeyRow) return fail(res, 401, 'unauthorized', 'This API key is invalid or disabled.');
+
+  let usageId;
+  try {
+    usageId = await database('rpc/aethel_start_request', {
+      method: 'POST',
+      body: JSON.stringify({ p_key_id: apiKeyRow.id, p_model: input.model, p_daily_limit: cfg.dailyLimit }),
+    });
+    if (typeof usageId !== 'string') throw new Error('REQUEST_NOT_CLAIMED');
+  } catch (error) {
+    if (error.detail?.includes('daily_limit_reached')) return fail(res, 429, 'daily_limit_reached', 'This key has reached its daily request limit.');
+    return fail(res, 503, 'service_unavailable', 'Usage metering is temporarily unavailable.');
+  }
+
+  const payload = { model: input.model, messages: input.messages };
+  for (const field of allowedFields) if (input[field] !== undefined) payload[field] = input[field];
+  if (input.max_tokens !== undefined) payload.max_tokens = input.max_tokens;
+  else payload.max_completion_tokens = input.max_completion_tokens ?? cfg.maxOutputTokens;
+  let upstream;
+  let result;
+  try {
+    upstream = await fetch(`${cfg.providerUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.providerKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(55000),
+    });
+    const text = await upstream.text();
+    try { result = JSON.parse(text); } catch (_) { result = null; }
+  } catch (_) {
+    try { await finishUsage(usageId, 'failed', null); } catch (_) { /* Keep the upstream failure response safe. */ }
+    return fail(res, 502, 'provider_unavailable', 'The inference provider did not respond. Retry the request.');
+  }
+
+  if (!upstream.ok || !result) {
+    try { await finishUsage(usageId, 'failed', null); } catch (_) { /* Keep provider errors safe. */ }
+    if (upstream.status === 429) return fail(res, 429, 'provider_rate_limited', 'The configured inference provider is rate limited. Retry later or configure additional capacity.');
+    return fail(res, 502, 'provider_error', 'The configured inference provider could not complete this request.');
+  }
+  try {
+    await finishUsage(usageId, 'succeeded', result.usage || null);
+  } catch (_) {
+    return fail(res, 503, 'usage_record_failed', 'The provider completed this request, but usage could not be saved. It may have been billed; check provider usage before retrying.');
+  }
+  res.setHeader('X-Aethel-Usage-Id', usageId);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(200).json(result);
+};
+
+async function finishUsage(id, status, usage) {
+  await database(`aethel_usage?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({
+      status,
+      prompt_tokens: Number.isInteger(usage?.prompt_tokens) ? usage.prompt_tokens : 0,
+      completion_tokens: Number.isInteger(usage?.completion_tokens) ? usage.completion_tokens : 0,
+      total_tokens: Number.isInteger(usage?.total_tokens) ? usage.total_tokens : 0,
+      completed_at: new Date().toISOString(),
+    }),
+  });
+}

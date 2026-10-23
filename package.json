@@ -1,10 +1,10 @@
 {
   "name": "aethel-ai",
   "version": "1.0.0",
-  "description": "Aethel AI — decentralized inference gateway landing page",
+  "description": "Aethel AI — authenticated inference API gateway",
   "private": true,
   "scripts": {
-    "dev": "npx serve .",
-    "start": "npx serve ."
+    "dev": "npx vercel dev",
+    "start": "npx vercel dev"
   }
 }
