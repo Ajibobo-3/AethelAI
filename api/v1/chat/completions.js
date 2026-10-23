@@ -84,6 +84,14 @@ module.exports = async function handler(req, res) {
       try { await finishUsage(usageId, 'failed', null, input.model); } catch (_) { /* Keep provider errors safe. */ }
       if (fallback.networkError) return fail(res, 502, 'fallback_unavailable', 'The primary provider was rate limited and the fallback provider did not respond.');
       if (fallback.response.status === 429) return fail(res, 429, 'providers_rate_limited', 'The primary and fallback providers are rate limited. Retry later.');
+      res.setHeader('X-Aethel-Provider', 'groq');
+      res.setHeader('X-Aethel-Upstream-Status', String(fallback.response.status));
+      if (fallback.response.status === 401 || fallback.response.status === 403) {
+        return fail(res, 502, 'fallback_auth_failed', 'The fallback provider rejected its configured credentials.');
+      }
+      if (fallback.response.status === 404) {
+        return fail(res, 502, 'fallback_model_unavailable', 'The configured fallback model is unavailable from the fallback provider.');
+      }
       return fail(res, 502, 'fallback_provider_error', 'The primary provider was rate limited and the fallback provider could not complete this request.');
     }
   }
@@ -91,6 +99,14 @@ module.exports = async function handler(req, res) {
   if (!attempt.response.ok || !attempt.result) {
     try { await finishUsage(usageId, 'failed', null); } catch (_) { /* Keep provider errors safe. */ }
     if (attempt.response.status === 429) return fail(res, 429, 'provider_rate_limited', 'The configured inference provider is rate limited. Retry later or configure additional capacity.');
+    res.setHeader('X-Aethel-Provider', 'openai');
+    res.setHeader('X-Aethel-Upstream-Status', String(attempt.response.status));
+    if (attempt.response.status === 401 || attempt.response.status === 403) {
+      return fail(res, 502, 'provider_auth_failed', 'The primary inference provider rejected its configured credentials.');
+    }
+    if (attempt.response.status === 404) {
+      return fail(res, 502, 'provider_model_unavailable', 'The primary inference provider could not find the configured model.');
+    }
     return fail(res, 502, 'provider_error', 'The configured inference provider could not complete this request.');
   }
   try {

@@ -20,12 +20,13 @@ function parseGroqModelMap(value) {
   if (!value) return defaultMap;
   try {
     const parsed = JSON.parse(value);
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([from, to]) =>
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return defaultMap;
+    const overrides = Object.fromEntries(Object.entries(parsed).filter(([from, to]) =>
       typeof from === 'string' && from.length > 0 && typeof to === 'string' && to.length > 0
     ));
+    return { ...defaultMap, ...overrides };
   } catch {
-    return {};
+    return defaultMap;
   }
 }
 
