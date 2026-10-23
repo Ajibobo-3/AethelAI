@@ -6,10 +6,27 @@ function configuration() {
     supabaseKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
     providerKey: process.env.OPENAI_API_KEY,
     providerUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+    groqKey: process.env.GROQ_API_KEY,
+    groqFallbackEnabled: process.env.AETHEL_ENABLE_GROQ_FALLBACK === 'true',
+    groqModelMap: parseGroqModelMap(process.env.AETHEL_GROQ_MODEL_MAP),
     models: (process.env.AETHEL_ALLOWED_MODELS || 'gpt-4o-mini').split(',').map(x => x.trim()).filter(Boolean),
     dailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_DAILY_REQUEST_LIMIT || '100', 10) || 100),
     maxOutputTokens: Math.max(1, Number.parseInt(process.env.AETHEL_MAX_OUTPUT_TOKENS || '2048', 10) || 2048),
   };
+}
+
+function parseGroqModelMap(value) {
+  const defaultMap = { 'gpt-4o-mini': 'openai/gpt-oss-20b' };
+  if (!value) return defaultMap;
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([from, to]) =>
+      typeof from === 'string' && from.length > 0 && typeof to === 'string' && to.length > 0
+    ));
+  } catch {
+    return {};
+  }
 }
 
 function send(res, status, body) {

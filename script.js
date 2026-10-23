@@ -40,6 +40,8 @@
       databaseStatus.textContent = data.components?.usage_store === 'connected' ? 'CONNECTED' : 'NOT READY';
       providerStatus.textContent = data.components?.inference_provider === 'configured' ? 'CONFIGURED' : 'NOT READY';
       $('#modelStatus').textContent = data.default_model || 'NOT SET';
+      const fallback = data.components?.fallback_provider || 'not_configured';
+      $('#fallbackStatus').textContent = fallback === 'enabled' ? 'ENABLED' : fallback === 'available_disabled' ? 'AVAILABLE · OFF' : fallback.toUpperCase().replaceAll('_', ' ');
       headline.textContent = ready ? 'Gateway is ready for requests.' : 'Gateway setup is incomplete.';
       description.textContent = ready
         ? 'The database is reachable and the inference provider is configured.'
@@ -48,6 +50,7 @@
       showStatus('UNAVAILABLE', false);
       databaseStatus.textContent = 'UNAVAILABLE';
       providerStatus.textContent = 'UNAVAILABLE';
+      $('#fallbackStatus').textContent = 'UNAVAILABLE';
       headline.textContent = 'Health check is unavailable.';
       description.textContent = 'The API service could not be reached from this deployment.';
     }

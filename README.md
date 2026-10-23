@@ -2,7 +2,7 @@
 
 Aethel is an OpenAI-compatible chat completion gateway deployed as Vercel Functions. It authenticates customer API keys, enforces an atomic per-key daily request quota, forwards requests to one configured OpenAI-compatible inference provider, and records provider-reported token usage in Supabase Postgres.
 
-This is the first operational release. It does not bypass upstream rate limits, provide distributed GPU routing, collect customer payments, or offer automatic provider failover. Provider account usage and costs remain with the operator.
+The gateway can optionally retry a primary-provider HTTP 429 through a model-mapped Groq backup. Fallback is disabled unless `AETHEL_ENABLE_GROQ_FALLBACK=true`, and usage is billed by the configured providers. This reduces reliance on a single provider but does not guarantee limit-free service. Distributed GPU routing and customer billing are not implemented.
 
 ## Configure the service
 
@@ -12,7 +12,7 @@ This is the first operational release. It does not bypass upstream rate limits, 
 4. Set the `AETHEL_ALLOWED_MODELS` list to the model IDs available to your provider account. The default is `gpt-4o-mini`.
 5. Deploy the project and check `/api/health`.
 
-Set `AETHEL_DAILY_REQUEST_LIMIT` to change the default of 100 attempted requests per key per UTC day. Requests that fail at the provider still count against the limit. `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). `OPENAI_BASE_URL` can point to another OpenAI-compatible provider endpoint.
+Set `AETHEL_DAILY_REQUEST_LIMIT` to change the default of 100 attempted requests per key per UTC day. Requests that fail at the provider still count against the limit. `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). `OPENAI_BASE_URL` can point to another OpenAI-compatible primary. To enable Groq fallback, configure `GROQ_API_KEY`, set `AETHEL_ENABLE_GROQ_FALLBACK=true`, and map each public model to a supported Groq model in `AETHEL_GROQ_MODEL_MAP`. The default mapping sends `gpt-4o-mini` fallback requests to Groq’s `openai/gpt-oss-20b`.
 
 ## Issue and disable customer keys
 

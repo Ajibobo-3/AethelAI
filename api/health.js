@@ -24,6 +24,7 @@ module.exports = async function handler(req, res) {
     components: {
       usage_store: databaseReady ? 'connected' : 'not_configured',
       inference_provider: providerReady ? 'configured' : 'not_configured',
+      fallback_provider: !cfg.groqKey ? 'not_configured' : cfg.groqFallbackEnabled ? 'enabled' : 'available_disabled',
     },
     default_model: cfg.models[0] || null,
     checked_at: new Date().toISOString(),

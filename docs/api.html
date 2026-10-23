@@ -21,12 +21,15 @@
     <div class="eyebrow" style="margin-top:30px"><span class="eyebrow-line"></span> API QUICKSTART · V1</div>
     <h1>Make your first request.</h1>
     <p class="docs-lede">Aethel provides an OpenAI-compatible chat completions route with customer API keys, a daily request quota, and persistent usage records.</p>
-    <div class="docs-note"><strong>Deployment setup is required.</strong> The production API will report <code>setup_required</code> until the database migration is applied and Vercel environment variables are configured. This release forwards to one configured provider. It does not bypass that provider’s rate limits, charge customers, or route across distributed GPUs.</div>
+    <div class="docs-note"><strong>Deployment setup is required.</strong> The production API will report <code>setup_required</code> until the database migration is applied and Vercel environment variables are configured. The primary provider’s rate limits still apply. An optional Groq fallback can retry mapped requests only after an HTTP 429 response; fallback is disabled by default. This does not provide distributed GPU routing or customer billing.</div>
 
     <h2>1. Configure the service</h2>
     <ol><li>Create a Supabase project and run <code>supabase/migrations/202610230001_aethel_gateway.sql</code> in the Supabase SQL Editor.</li><li>Add the variables from <code>.env.example</code> to the Vercel project. Use your Supabase project URL and service role key, a provider API key, and a long random <code>AETHEL_ADMIN_KEY</code>. Keep these secrets server-side.</li><li>Set <code>AETHEL_ALLOWED_MODELS</code> to the comma-separated models enabled for your provider account. The default is <code>gpt-4o-mini</code>.</li><li>Redeploy, then confirm <a href="/api/health">/api/health</a> reports <code>ready</code>.</li></ol>
 
-    <h2>2. Create a customer key</h2>
+    <h2>2. Optional: configure Groq fallback</h2>
+    <p>The fallback code can route a primary HTTP 429 to Groq when the request model has a configured mapping. It is disabled by default to avoid unexpected provider use or charges. Set <code>GROQ_API_KEY</code>, <code>AETHEL_ENABLE_GROQ_FALLBACK=true</code>, and <code>AETHEL_GROQ_MODEL_MAP</code> in Vercel, then redeploy. The default mapping is <code>gpt-4o-mini</code> → <code>openai/gpt-oss-20b</code>.</p>
+
+    <h2>3. Create a customer key</h2>
     <p>Run this from a trusted terminal. The admin key authorizes key creation. The generated customer key is returned once; store it securely.</p>
     <div class="docs-code"><pre>curl -X POST https://aethelai.online/api/v1/keys \
   -H "X-Aethel-Admin-Key: $AETHEL_ADMIN_KEY" \
@@ -34,7 +37,7 @@
   -d '{"name":"my-app"}'</pre></div>
     <p>Save the returned <code>api_key</code> as <code>AETHEL_API_KEY</code> in your application’s server-side secrets. The database stores only its SHA-256 hash. Never put the admin key, provider key, or customer key in frontend code.</p>
 
-    <h2>3. Send a chat completion</h2>
+    <h2>4. Send a chat completion</h2>
     <div class="docs-code"><pre>curl https://aethelai.online/api/v1/chat/completions \
   -H "Authorization: Bearer $AETHEL_API_KEY" \
   -H "Content-Type: application/json" \
@@ -46,7 +49,7 @@
 
     <h2>Routes and current boundaries</h2>
     <table class="docs-endpoints"><tbody><tr><td><code>GET</code></td><td><code>/api/health</code></td><td>Service and dependency readiness</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys</code></td><td>Create a customer key (admin secret required)</td></tr><tr><td><code>DELETE</code></td><td><code>/api/v1/keys/:id</code></td><td>Disable a customer key (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/chat/completions</code></td><td>Authenticated, non-streaming chat completion</td></tr></tbody></table>
-    <p>One provider is configured per deployment. Streaming, automatic provider failover, payment collection, refunds, and distributed GPU execution are not implemented in this first release. Upstream usage and costs are charged by the configured provider account.</p>
+    <p>Streaming, payment collection, refunds, and distributed GPU execution are not implemented in this first release. Provider fallback is limited to an explicitly enabled Groq retry after a primary HTTP 429, and requires a model mapping. Upstream usage and costs are charged by the configured provider account.</p>
     <div class="docs-footer">Aethel AI · <a href="/">Home</a> · <a href="/api/health">API health</a></div>
   </main>
 </body>

@@ -63,47 +63,76 @@ module.exports = async function handler(req, res) {
   for (const field of allowedFields) if (input[field] !== undefined) payload[field] = input[field];
   if (input.max_tokens !== undefined) payload.max_tokens = input.max_tokens;
   else payload.max_completion_tokens = input.max_completion_tokens ?? cfg.maxOutputTokens;
-  let upstream;
-  let result;
-  try {
-    upstream = await fetch(`${cfg.providerUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${cfg.providerKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(55000),
-    });
-    const text = await upstream.text();
-    try { result = JSON.parse(text); } catch (_) { result = null; }
-  } catch (_) {
+  let provider = 'openai';
+  let actualModel = input.model;
+  let attempt = await requestProvider(cfg.providerUrl, cfg.providerKey, payload);
+  if (attempt.networkError) {
     try { await finishUsage(usageId, 'failed', null); } catch (_) { /* Keep the upstream failure response safe. */ }
     return fail(res, 502, 'provider_unavailable', 'The inference provider did not respond. Retry the request.');
   }
 
-  if (!upstream.ok || !result) {
+  const groqModel = cfg.groqModelMap[input.model];
+  if (attempt.response.status === 429 && cfg.groqFallbackEnabled && cfg.groqKey && groqModel) {
+    const fallbackPayload = { ...payload, model: groqModel };
+    const fallback = await requestProvider('https://api.groq.com/openai/v1', cfg.groqKey, fallbackPayload);
+    if (!fallback.networkError && fallback.response.ok && fallback.result) {
+      attempt = fallback;
+      provider = 'groq';
+      actualModel = groqModel;
+      attempt.result.model = groqModel;
+    } else {
+      try { await finishUsage(usageId, 'failed', null, input.model); } catch (_) { /* Keep provider errors safe. */ }
+      if (fallback.networkError) return fail(res, 502, 'fallback_unavailable', 'The primary provider was rate limited and the fallback provider did not respond.');
+      if (fallback.response.status === 429) return fail(res, 429, 'providers_rate_limited', 'The primary and fallback providers are rate limited. Retry later.');
+      return fail(res, 502, 'fallback_provider_error', 'The primary provider was rate limited and the fallback provider could not complete this request.');
+    }
+  }
+
+  if (!attempt.response.ok || !attempt.result) {
     try { await finishUsage(usageId, 'failed', null); } catch (_) { /* Keep provider errors safe. */ }
-    if (upstream.status === 429) return fail(res, 429, 'provider_rate_limited', 'The configured inference provider is rate limited. Retry later or configure additional capacity.');
+    if (attempt.response.status === 429) return fail(res, 429, 'provider_rate_limited', 'The configured inference provider is rate limited. Retry later or configure additional capacity.');
     return fail(res, 502, 'provider_error', 'The configured inference provider could not complete this request.');
   }
   try {
-    await finishUsage(usageId, 'succeeded', result.usage || null);
+    await finishUsage(usageId, 'succeeded', attempt.result.usage || null, actualModel);
   } catch (_) {
     return fail(res, 503, 'usage_record_failed', 'The provider completed this request, but usage could not be saved. It may have been billed; check provider usage before retrying.');
   }
   res.setHeader('X-Aethel-Usage-Id', usageId);
+  res.setHeader('X-Aethel-Provider', provider);
   res.setHeader('Cache-Control', 'no-store');
-  return res.status(200).json(result);
+  return res.status(200).json(attempt.result);
 };
 
-async function finishUsage(id, status, usage) {
+async function requestProvider(baseUrl, apiKey, payload) {
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(55000),
+    });
+    const text = await response.text();
+    let result;
+    try { result = JSON.parse(text); } catch (_) { result = null; }
+    return { response, result, networkError: false };
+  } catch (_) {
+    return { response: null, result: null, networkError: true };
+  }
+}
+
+async function finishUsage(id, status, usage, model) {
+  const body = {
+    status,
+    prompt_tokens: Number.isInteger(usage?.prompt_tokens) ? usage.prompt_tokens : 0,
+    completion_tokens: Number.isInteger(usage?.completion_tokens) ? usage.completion_tokens : 0,
+    total_tokens: Number.isInteger(usage?.total_tokens) ? usage.total_tokens : 0,
+    completed_at: new Date().toISOString(),
+  };
+  if (model) body.model = model;
   await database(`aethel_usage?id=eq.${id}`, {
     method: 'PATCH',
     headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({
-      status,
-      prompt_tokens: Number.isInteger(usage?.prompt_tokens) ? usage.prompt_tokens : 0,
-      completion_tokens: Number.isInteger(usage?.completion_tokens) ? usage.completion_tokens : 0,
-      total_tokens: Number.isInteger(usage?.total_tokens) ? usage.total_tokens : 0,
-      completed_at: new Date().toISOString(),
-    }),
+    body: JSON.stringify(body),
   });
 }
