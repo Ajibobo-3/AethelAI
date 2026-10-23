@@ -7,7 +7,7 @@ function configuration() {
     providerKey: process.env.OPENAI_API_KEY,
     providerUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
     groqKey: process.env.GROQ_API_KEY,
-    groqFallbackEnabled: process.env.AETHEL_ENABLE_GROQ_FALLBACK === 'true',
+    groqFallbackEnabled: /^true$/i.test((process.env.AETHEL_ENABLE_GROQ_FALLBACK || '').trim()),
     groqModelMap: parseGroqModelMap(process.env.AETHEL_GROQ_MODEL_MAP),
     models: (process.env.AETHEL_ALLOWED_MODELS || 'gpt-4o-mini').split(',').map(x => x.trim()).filter(Boolean),
     dailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_DAILY_REQUEST_LIMIT || '100', 10) || 100),
