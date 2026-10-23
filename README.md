@@ -8,7 +8,7 @@ This is the first operational release. It does not bypass upstream rate limits, 
 
 1. Create a Supabase project.
 2. Apply `supabase/migrations/202610230001_aethel_gateway.sql` in the Supabase SQL Editor.
-3. Add the variables from `.env.example` under Vercel Project Settings → Environment Variables. Use a Supabase project URL, its service role key, a provider API key, and a strong random `AETHEL_ADMIN_KEY`. Store these as server-side secrets only.
+3. Add the variables from `.env.example` under Vercel Project Settings → Environment Variables. Use a Supabase project URL, its server-only secret key (`SUPABASE_SECRET_KEY`; the legacy `SUPABASE_SERVICE_ROLE_KEY` is also supported), a provider API key, and a strong random `AETHEL_ADMIN_KEY`. Store these as server-side secrets only.
 4. Set the `AETHEL_ALLOWED_MODELS` list to the model IDs available to your provider account. The default is `gpt-4o-mini`.
 5. Deploy the project and check `/api/health`.
 

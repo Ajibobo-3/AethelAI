@@ -2,8 +2,8 @@ const crypto = require('node:crypto');
 
 function configuration() {
   return {
-    supabaseUrl: process.env.SUPABASE_URL && process.env.SUPABASE_URL.replace(/\/$/, ''),
-    supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    supabaseUrl: (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, ''),
+    supabaseKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
     providerKey: process.env.OPENAI_API_KEY,
     providerUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
     models: (process.env.AETHEL_ALLOWED_MODELS || 'gpt-4o-mini').split(',').map(x => x.trim()).filter(Boolean),
