@@ -1,8 +1,28 @@
 'use strict';
 
 const base = (process.env.AETHEL_API_BASE_URL || 'https://aethelai.online').replace(/\/$/, '');
-const adminKey = process.env.AETHEL_ADMIN_KEY;
+const adminKey = process.env.AETHEL_ADMIN_KEY || localAdminKey();
 const model = process.env.AETHEL_SMOKE_MODEL || 'gpt-4o-mini';
+
+function localAdminKey() {
+  let contents;
+  try { contents = require('node:fs').readFileSync('.env.local', 'utf8'); } catch { return undefined; }
+  for (const raw of contents.split(/\r?\n/)) {
+    let line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (line.startsWith('export ')) line = line.slice(7);
+    const separator = line.indexOf('=');
+    if (separator < 0 || line.slice(0, separator).trim() !== 'AETHEL_ADMIN_KEY') continue;
+    let value = line.slice(separator + 1).trim();
+    if (value.startsWith('"')) {
+      try { value = JSON.parse(value); } catch { value = value.slice(1, value.endsWith('"') ? -1 : undefined); }
+    } else if (value.startsWith("'")) {
+      value = value.slice(1, value.endsWith("'") ? -1 : undefined);
+    }
+    return value || undefined;
+  }
+  return undefined;
+}
 
 async function jsonRequest(url, options, timeoutMs = 20000) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });

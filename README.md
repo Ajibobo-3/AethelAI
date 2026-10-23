@@ -48,7 +48,7 @@ Supported routes:
 - `DELETE /api/v1/keys/:id` — disables a customer key with the admin secret.
 - `POST /api/v1/chat/completions` — authenticated non-streaming chat completion.
 
-This API currently requires the Vercel deployment because the functions live under `api/`. For local API development, use `npm run dev` (or `npx vercel dev`) so those functions are served. After setting `AETHEL_ADMIN_KEY` in the local terminal environment, run `npm run smoke` to create a temporary customer key, make one small inference request, and revoke the key. The script never prints the key. Copy `.env.example` to a local environment file and fill it with development credentials. Never commit real credentials.
+This API currently requires the Vercel deployment because the functions live under `api/`. For local API development, use `npm run dev` (or `npx vercel dev`) so those functions are served. Put `AETHEL_ADMIN_KEY` in the ignored local `.env.local` file or the local terminal environment, then run `npm run smoke` to create a temporary customer key, make one small inference request, and revoke the key. The script never prints the key. Copy `.env.example` to a local environment file and fill it with development credentials. Never commit real credentials.
 
 ## Project structure
 
