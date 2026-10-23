@@ -1,10 +1,11 @@
 {
   "name": "aethel-ai",
   "version": "1.0.0",
-  "description": "Aethel AI — authenticated inference API gateway",
+  "description": "Aethel AI \u2014 authenticated inference API gateway",
   "private": true,
   "scripts": {
     "dev": "npx vercel dev",
-    "start": "npx vercel dev"
+    "start": "npx vercel dev",
+    "smoke": "node scripts/live-smoke.js"
   }
 }
