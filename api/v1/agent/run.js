@@ -47,8 +47,8 @@ module.exports = async function handler(req, res) {
     return send(res, 502, { error: { code: 'model_discovery_failed', message: 'Could not verify Groq model availability.', provider: 'groq', upstream_status: discovery.status || null, retryable: true } });
   }
   if (discovery.activeModels.length === 0) {
-    console.error('[aethel:groq_no_active_llama_models]', JSON.stringify({ available_model_ids: discovery.modelIds }));
-    return send(res, 503, { error: { code: 'no_supported_models', message: 'Groq returned no active Llama 3 text models for this account.', provider: 'groq', retryable: false } });
+    console.error('[aethel:groq_no_supported_chat_models]', JSON.stringify({ available_model_ids: discovery.modelIds }));
+    return send(res, 503, { error: { code: 'no_supported_models', message: 'Groq returned no active text chat models for this account.', provider: 'groq', retryable: false } });
   }
   const requestedModel = resolveGroqModel(cfg.models[0] || 'llama-3.1-8b-instant', cfg);
   const model = discovery.activeModels.includes(requestedModel) ? requestedModel : discovery.activeModels[0];
@@ -316,9 +316,22 @@ async function discoverGroqModels(cfg) {
       console.error('[aethel:groq_model_discovery_error]', JSON.stringify({ status: response.status, response_body: body }));
       return { ok: false, status: response.status, modelIds: [], activeModels: [] };
     }
-    const modelIds = result.data.map(model => model?.id).filter(id => typeof id === 'string');
-    const activeModels = modelIds.filter(id => /^llama-3\.\d+-\d+b-(?:instant|versatile)$/.test(id));
-    return { ok: true, modelIds, activeModels };
+    const records = result.data.filter(model => typeof model?.id === 'string');
+    const modelIds = records.map(model => model.id);
+    const activeRecords = records.filter(model => model.active !== false);
+    const isTextChatModel = model => Number(model.context_window) > 0
+      && !/(whisper|speech|audio|transcri|tts|guard|embed|rerank|moderation|vision|image)/i.test(model.id);
+    const llamaModels = activeRecords
+      .filter(model => /^llama-3\.\d+-\d+b-(?:instant|versatile)$/.test(model.id))
+      .map(model => model.id);
+    const productionTextModels = activeRecords.filter(isTextChatModel).map(model => model.id);
+    if (!llamaModels.length) {
+      console.warn('[aethel:groq_no_llama_models_using_active_text_model]', JSON.stringify({
+        available_model_ids: modelIds,
+        eligible_text_model_ids: productionTextModels,
+      }));
+    }
+    return { ok: true, modelIds, activeModels: llamaModels.length ? llamaModels : productionTextModels };
   } catch (error) {
     console.error('[aethel:groq_model_discovery_error]', JSON.stringify({ message: error?.message || 'Groq model discovery failed.' }));
     return { ok: false, status: null, modelIds: [], activeModels: [] };

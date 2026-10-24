@@ -27,7 +27,7 @@
     <ol><li>Create a Supabase project and run both migrations in order: <code>202610230001_aethel_gateway.sql</code>, then <code>202610240001_aethel_agent_beta.sql</code>.</li><li>Add the variables from <code>.env.example</code> to the Vercel project. Use your Supabase project URL and server-only secret key (<code>SUPABASE_SECRET_KEY</code>), <code>GROQ_API_KEY</code>, and a long random <code>AETHEL_ADMIN_KEY</code>. Keep these secrets server-side.</li><li>Set <code>AETHEL_ALLOWED_MODELS</code> to the comma-separated public model IDs accepted by clients. The default inference model is <code>llama-3.1-8b-instant</code>.</li><li>Redeploy, then confirm <a href="/api/health">/api/health</a> reports <code>ready</code>.</li></ol>
 
     <h2>2. Agent model fallback</h2>
-    <p>Before each run, the agent discovers the Groq account’s available Llama 3 text models. The primary is <code>llama-3.1-8b-instant</code>; if unavailable, the route retries with <code>llama-3.3-70b-versatile</code>, or selects an active discovered Llama 3 model. Standard aliases such as <code>gpt-4o</code> and <code>gpt-4o-mini</code> map to the primary.</p>
+    <p>Before each run, the agent discovers the Groq account’s available models. It prefers active Llama 3 text models and uses another active text chat model if the account has no Llama 3 models. The primary default is <code>llama-3.1-8b-instant</code>; the secondary default is <code>llama-3.3-70b-versatile</code>. Standard aliases such as <code>gpt-4o</code> and <code>gpt-4o-mini</code> map to the primary.</p>
 
     <h2>3. Create a customer key</h2>
     <p>Run this from a trusted terminal. The admin key authorizes key creation. The generated customer key is returned once; store it securely.</p>

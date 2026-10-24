@@ -43,7 +43,7 @@ function jsonResponse(body, status = 200) {
 }
 
 function groqModelsResponse(ids = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile']) {
-  return jsonResponse({ data: ids.map(id => ({ id })) });
+  return jsonResponse({ data: ids.map(id => ({ id, active: true, context_window: 8192 })) });
 }
 
 function makeResponse() {
@@ -329,6 +329,30 @@ test('agent selects the first discovered Llama 3 text model when its configured 
   assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   assert.deepEqual(requestedModels, ['llama-3.3-70b-versatile']);
   assert.equal(res.body.output, 'Discovered model response.');
+});
+
+test('agent falls back to an active text chat model when the account has no Llama 3 models', async () => {
+  setTestEnvironment();
+  const requestedModels = [];
+  global.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'api.groq.com' && parsed.pathname.endsWith('/models')) {
+      return groqModelsResponse(['openai/gpt-oss-20b', 'whisper-large-v3']);
+    }
+    if (parsed.hostname === 'db.test.invalid') {
+      if (parsed.pathname.endsWith('/aethel_api_keys')) return jsonResponse([{ id: apiKeyId, daily_limit: 8 }]);
+      if (parsed.pathname.endsWith('/rpc/aethel_start_request')) return jsonResponse('usage-non-llama-model');
+      if (parsed.pathname.endsWith('/agent_sessions') && (!options.method || options.method === 'GET')) return jsonResponse([]);
+      if (parsed.pathname.endsWith('/agent_sessions') && options.method === 'POST') return new Response(null, { status: 204 });
+      if (parsed.pathname.endsWith('/aethel_usage')) return new Response(null, { status: 204 });
+    }
+    requestedModels.push(JSON.parse(options.body).model);
+    return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'Available chat model response.' } }] });
+  };
+  const res = await invoke(agentHandler, { task: 'Hello', session_id: 'no-llama-models', tools: [] }, { authorization: `Bearer ${apiToken}` });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.deepEqual(requestedModels, ['openai/gpt-oss-20b']);
+  assert.equal(res.body.model, 'openai/gpt-oss-20b');
 });
 
 test('agent retries unavailable Groq model with llama-3.3-70b-versatile and logs IDs plus exact error body', async () => {
