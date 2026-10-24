@@ -263,11 +263,11 @@
         renderMessages();
         input.value = task;
         if (response.status === 401) {
-          showToast('API key not accepted', data.error?.message || data.error?.code || 'Check that this is an active Aethel customer key.', 'error', 'Update key', openKeyDialog);
+          showToast('API key not accepted', data.error?.message || data.error?.code || 'Check that this is an active aethel_live_ customer key.', 'error', 'Update key', openKeyDialog);
         } else if (response.status === 429) {
           const reset = data.resets_at ? new Date(data.resets_at) : null;
           const time = reset && Number.isFinite(reset.getTime()) ? ` Resets at ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(reset)}.` : '';
-          showToast('Daily pilot limit reached', `${data.message || 'Daily pilot limit reached.'}${time}`, 'error');
+          showToast('Daily pilot limit reached', `${data.message || 'Daily pilot limit reached.'}${time} Ask your pilot administrator to top up this key.`, 'error');
         } else {
           const message = typeof data.error === 'string' ? data.message : data.error?.message;
           showToast('Request could not be completed', message || `The gateway returned HTTP ${response.status}. You can try again.`, 'error');
