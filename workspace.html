@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0b0a" />
+  <meta name="description" content="Try the Aethel AI V1 agent workspace." />
+  <title>Agent Workspace — Aethel AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="workspace.css" />
+  <script src="workspace.js" defer></script>
+</head>
+<body class="workspace-page">
+  <div class="workspace-shell">
+    <aside class="workspace-sidebar" aria-label="Workspace sidebar">
+      <a class="workspace-brand" href="/" aria-label="Aethel AI home"><span class="brand-mark">A</span><span>AETHEL<span class="brand-muted">.AI</span></span></a>
+      <button class="new-session-button" id="newSessionButton" type="button"><span aria-hidden="true">＋</span> New conversation</button>
+      <div class="sidebar-section-label">PILOT WORKSPACE</div>
+      <div class="sidebar-session active-session"><span class="session-icon" aria-hidden="true">◌</span><span>Agent session</span><span class="session-live-dot"></span></div>
+      <div class="sidebar-spacer"></div>
+      <div class="pilot-card">
+        <div class="pilot-card-top"><span class="pilot-dot"></span><span>PRIVATE BETA</span></div>
+        <p>One gateway for your pilot agent tasks.</p>
+        <a href="docs/api.html">Read the API guide <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="sidebar-account">
+        <span class="account-avatar">A</span>
+        <span class="account-copy"><strong>API key</strong><small id="sidebarKeyStatus">Not configured</small></span>
+        <button class="icon-button sidebar-settings" id="openKeySettings" type="button" aria-label="Configure API key" title="Configure API key">⚙</button>
+      </div>
+    </aside>
+
+    <main class="workspace-main">
+      <header class="workspace-header">
+        <div class="workspace-title-group">
+          <a class="mobile-brand" href="/" aria-label="Aethel AI home"><span class="brand-mark">A</span></a>
+          <div><div class="workspace-kicker">AETHEL V1 · PRIVATE API PILOT</div><h1>Agent workspace</h1></div>
+        </div>
+        <div class="header-controls">
+          <span class="workspace-model"><span class="model-spark">✳</span> Configured model</span>
+          <button class="key-button" id="headerKeyButton" type="button"><span class="key-indicator" id="headerKeyIndicator"></span><span id="headerKeyLabel">Add API key</span></button>
+          <a class="header-home" href="/">Back to Aethel <span aria-hidden="true">↗</span></a>
+        </div>
+      </header>
+
+      <section class="conversation" aria-label="Agent conversation">
+        <div class="conversation-scroll" id="conversationScroll">
+          <div class="welcome-state" id="welcomeState">
+            <div class="welcome-emblem"><span>A</span><i></i></div>
+            <div class="welcome-eyebrow">AETHEL AGENT · UP TO 5 TOOL ROUNDS</div>
+            <h2>What would you like<br />to work through?</h2>
+            <p>Ask a question or try a pilot tool. Your conversation is saved to your Aethel session.</p>
+            <div class="suggestion-grid" aria-label="Suggested prompts">
+              <button class="suggestion-card" type="button" data-prompt="Calculate 15% of 850"><span class="suggestion-icon">%</span><span><strong>Calculate 15% of 850</strong><small>Use the calculator tool</small></span><span class="suggestion-arrow">↗</span></button>
+              <button class="suggestion-card" type="button" data-prompt="Check the current UTC time"><span class="suggestion-icon">◷</span><span><strong>Check current UTC time</strong><small>Use the UTC clock tool</small></span><span class="suggestion-arrow">↗</span></button>
+            </div>
+            <div class="welcome-note"><span>i</span> Pilot tools: calculator and UTC time. Provider limits still apply.</div>
+          </div>
+          <div class="message-list" id="messageList" aria-live="polite" aria-relevant="additions"></div>
+          <div class="working-card" id="workingCard" hidden aria-live="polite">
+            <span class="working-mark"><i></i><i></i><i></i></span>
+            <span><strong id="workingTitle">Aethel is working</strong><small id="workingDetail">Planning your task and checking available tools…</small></span>
+            <span class="working-label">IN PROGRESS</span>
+          </div>
+        </div>
+
+        <div class="composer-dock">
+          <div class="composer-wrap">
+            <div class="composer-hint"><span class="hint-dot"></span> Your pilot API key is sent securely to this gateway for each request.</div>
+            <form class="composer" id="composerForm">
+              <label class="visually-hidden" for="promptInput">Message Aethel</label>
+              <textarea id="promptInput" rows="1" maxlength="8000" placeholder="Message Aethel…" autocomplete="off"></textarea>
+              <div class="composer-bottom"><span class="composer-meta">Enter to send <span>·</span> Shift + Enter for a new line</span><button class="send-button" id="sendButton" type="submit" aria-label="Send message" disabled><span aria-hidden="true">↑</span></button></div>
+            </form>
+            <p class="composer-disclaimer">Aethel is a private pilot. Responses use the provider configured for this deployment.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="key-dialog" id="keyDialog" aria-labelledby="keyDialogTitle">
+    <form class="key-dialog-card" id="keyForm" method="dialog">
+      <button class="dialog-close" id="closeKeyDialog" type="button" aria-label="Close key settings">×</button>
+      <div class="dialog-mark">✳</div>
+      <div class="dialog-eyebrow">PRIVATE PILOT ACCESS</div>
+      <h2 id="keyDialogTitle">Connect your API key</h2>
+      <p class="dialog-description">Use a temporary Aethel customer key issued by your pilot administrator. Your key is saved only in this browser.</p>
+      <label class="key-input-label" for="apiKeyInput">AETHEL API KEY</label>
+      <div class="key-input-wrap"><input id="apiKeyInput" type="password" placeholder="aethel_live_…" autocomplete="off" spellcheck="false" /><button id="toggleKeyVisibility" class="show-key-button" type="button" aria-label="Show API key">Show</button></div>
+      <p class="key-storage-note"><span>🔒</span> Stored in this browser’s localStorage. Never enter your admin or provider secret here.</p>
+      <div class="key-error" id="keyError" role="alert" hidden></div>
+      <div class="dialog-actions"><button class="dialog-save" id="saveKeyButton" type="submit">Save API key <span>→</span></button><button class="dialog-clear" id="clearKeyButton" type="button" hidden>Remove saved key</button></div>
+      <div class="dialog-footer"><a href="docs/api.html">How to get a pilot key <span>↗</span></a><span>KEYS ARE NEVER SHOWN IN CHAT</span></div>
+    </form>
+  </dialog>
+  <div class="toast-region" id="toastRegion" aria-live="assertive" aria-atomic="true"></div>
+</body>
+</html>

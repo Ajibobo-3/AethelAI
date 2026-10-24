@@ -20,7 +20,7 @@
   <header class="topbar">
     <a class="brand" href="#top" aria-label="Aethel AI home"><span class="brand-mark">A</span><span>AETHEL<span class="brand-muted">.AI</span></span></a>
     <nav class="nav-links" aria-label="Main navigation"><a href="#network">Service status</a><a href="#advantage">Why Aethel</a><a href="#developers">Developers</a></nav>
-    <div class="nav-actions"><span class="status"><i id="headerStatusDot"></i> <span id="headerStatusText">CHECKING API</span></span><a class="button button-small button-ghost" href="docs/api.html">API quickstart <span>↗</span></a></div>
+    <div class="nav-actions"><span class="status"><i id="headerStatusDot"></i> <span id="headerStatusText">CHECKING API</span></span><a class="button button-small button-ghost" href="docs/api.html">API quickstart <span>↗</span></a><a class="button button-small button-gold" href="/workspace">Launch Workspace <span>↗</span></a></div>
     <button class="menu-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
   </header>
   <main id="top">
@@ -29,14 +29,14 @@
         <div class="eyebrow"><span class="eyebrow-line"></span> AETHEL V1 · PRIVATE API PILOT</div>
         <h1>One endpoint<br />for <span>AI inference.</span></h1>
         <p class="hero-lede">An OpenAI-compatible gateway with customer API keys, model controls, per-key daily quotas, and durable usage records. Requests go to the inference provider configured for this deployment.</p>
-        <div class="hero-actions"><a class="button button-gold" href="docs/api.html">Read the API quickstart <span>↓</span></a><a class="button button-ghost" href="/api/health" target="_blank" rel="noopener">Check service health <span>↗</span></a></div>
+        <div class="hero-actions"><a class="button button-gold" href="/workspace">Launch Agent Workspace <span>↗</span></a><a class="button button-ghost" href="docs/api.html">API quickstart <span>↓</span></a></div>
         <div class="hero-footnote"><span class="tiny-check">i</span> The configured provider’s rate limits and availability still apply.</div>
       </div>
       <div class="telemetry-card" id="network">
         <div class="card-top"><div><span class="overline">SERVICE STATUS</span><h2>Inference gateway</h2></div><span class="live-pill"><i id="serviceStatusDot"></i> <span id="serviceStatus">CHECKING</span></span></div>
         <div class="service-panel"><div class="service-emblem"><span class="center-pulse"></span><span class="center-a">A</span></div><div><strong id="serviceHeadline">Checking service configuration…</strong><p id="serviceDescription">Contacting the gateway health endpoint.</p></div></div>
         <div class="metric-grid service-metrics"><div class="metric"><span>USAGE STORE</span><strong class="metric-state" id="databaseStatus">CHECKING</strong><small>Durable request records</small></div><div class="metric"><span>INFERENCE PROVIDER</span><strong class="metric-state" id="providerStatus">CHECKING</strong><small>Groq backup: <span id="fallbackStatus">CHECKING</span></small></div><div class="metric"><span>DEFAULT MODEL</span><strong class="metric-model" id="modelStatus">gpt-4o-mini</strong><small>Operator-configured allowlist</small></div></div>
-        <div class="feed"><div class="feed-head"><span>AVAILABLE API ROUTES</span><span class="feed-live">V1</span></div><div class="route-list"><code>GET&nbsp; /api/health</code><code>POST /api/v1/chat/completions</code><code>POST /api/v1/keys <b>ADMIN</b></code></div></div>
+        <div class="feed"><div class="feed-head"><span>AVAILABLE API ROUTES</span><span class="feed-live">V1</span></div><div class="route-list"><code>GET&nbsp; /api/health</code><code>POST /api/v1/chat/completions</code><code>POST /api/v1/agent/run</code><code>POST /api/v1/keys <b>ADMIN</b></code></div></div>
         <p class="simulation-note" id="serviceNote">Live status loads from this deployment. Run the quickstart to configure provider access and issue customer keys.</p>
       </div>
       <div class="hero-orbit orbit-a"></div><div class="hero-orbit orbit-b"></div>

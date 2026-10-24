@@ -4,6 +4,10 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/workspace",
+      "destination": "/workspace.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
