@@ -24,7 +24,7 @@
     <div class="docs-note"><strong>V1 is a private API pilot.</strong> It is not a self-serve paid launch. Aethel does not charge customers yet; provider usage is billed to the operator’s provider accounts. The primary provider’s rate limits still apply. An optional Groq fallback retries mapped requests after an HTTP 429 response.</div>
 
     <h2>1. Configure the service</h2>
-    <ol><li>Create a Supabase project and run <code>supabase/migrations/202610230001_aethel_gateway.sql</code> in the Supabase SQL Editor.</li><li>Add the variables from <code>.env.example</code> to the Vercel project. Use your Supabase project URL and server-only secret key (<code>SUPABASE_SECRET_KEY</code>), a provider API key, and a long random <code>AETHEL_ADMIN_KEY</code>. Keep these secrets server-side.</li><li>Set <code>AETHEL_ALLOWED_MODELS</code> to the comma-separated models enabled for your provider account. The default is <code>gpt-4o-mini</code>.</li><li>Redeploy, then confirm <a href="/api/health">/api/health</a> reports <code>ready</code>.</li></ol>
+    <ol><li>Create a Supabase project and run both migrations in order: <code>202610230001_aethel_gateway.sql</code>, then <code>202610240001_aethel_agent_beta.sql</code>.</li><li>Add the variables from <code>.env.example</code> to the Vercel project. Use your Supabase project URL and server-only secret key (<code>SUPABASE_SECRET_KEY</code>), a provider API key, and a long random <code>AETHEL_ADMIN_KEY</code>. Keep these secrets server-side.</li><li>Set <code>AETHEL_ALLOWED_MODELS</code> to the comma-separated models enabled for your provider account. The default is <code>gpt-4o-mini</code>.</li><li>Redeploy, then confirm <a href="/api/health">/api/health</a> reports <code>ready</code>.</li></ol>
 
     <h2>2. Optional: configure Groq fallback</h2>
     <p>The fallback code can route a primary HTTP 429 to Groq when the request model has a configured mapping. Production currently has this fallback enabled. For another deployment, set <code>GROQ_API_KEY</code>, <code>AETHEL_ENABLE_GROQ_FALLBACK=true</code>, and <code>AETHEL_GROQ_MODEL_MAP</code>, then redeploy. A fallback request may incur charges on the Groq account. The default mapping is <code>gpt-4o-mini</code> → <code>openai/gpt-oss-20b</code>.</p>
@@ -48,7 +48,19 @@
     <p>The response follows the OpenAI chat completion shape. The gateway records the request status and token counts returned by the upstream provider. The default limit is 100 attempted requests per UTC day per key; provider errors also count. Set <code>AETHEL_DAILY_REQUEST_LIMIT</code> to change it. Output is capped at 2,048 tokens by default; configure <code>AETHEL_MAX_OUTPUT_TOKENS</code> to adjust that ceiling.</p>
 
     <h2>Routes and current boundaries</h2>
-    <table class="docs-endpoints"><tbody><tr><td><code>GET</code></td><td><code>/api/health</code></td><td>Service and dependency readiness</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys</code></td><td>Create a customer key (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys/revoke</code></td><td>Disable a customer key using its ID from the JSON body (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/chat/completions</code></td><td>Authenticated, non-streaming chat completion</td></tr></tbody></table>
+    <table class="docs-endpoints"><tbody><tr><td><code>GET</code></td><td><code>/api/health</code></td><td>Service and dependency readiness</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys</code></td><td>Create a customer key (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys/revoke</code></td><td>Disable a customer key using its ID from the JSON body (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/keys/topup</code></td><td>Increase a key's daily request cap or restore its configured default (admin secret required)</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/chat/completions</code></td><td>Authenticated, metered chat completion with mapped Groq retry after primary HTTP 429</td></tr><tr><td><code>POST</code></td><td><code>/api/v1/agent/run</code></td><td>Authenticated agent loop, up to five iterations, persisted session and tool steps</td></tr></tbody></table>
+    <h2>5. Run an agent task</h2>
+    <p>Agent sessions are stored in Supabase and scoped to the customer key. The beta executes only the built-in <code>calculator</code> and <code>get_utc_time</code> tools; custom code and arbitrary tool names are not executed.</p>
+    <div class="docs-code"><pre>curl -X POST https://www.aethelai.online/api/v1/agent/run \
+  -H "Authorization: Bearer $AETHEL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"What is 19 times 23?","session_id":"pilot-session-1","tools":[{"type":"function","function":{"name":"calculator","parameters":{"type":"object"}}}]}'</pre></div>
+    <h2>6. Top up a beta key</h2>
+    <p>Use a trusted terminal and the admin key. Increase the per-key daily cap by a positive number, or restore the configured default cap. The endpoint retains usage history and does not erase request records.</p>
+    <div class="docs-code"><pre>curl -X POST https://www.aethelai.online/api/v1/keys/topup \
+  -H "X-Aethel-Admin-Key: $AETHEL_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"KEY_ID","increase_by":50}'</pre></div>
     <p>Streaming, payment collection, refunds, and distributed GPU execution are not implemented in this first release. Provider fallback is limited to a Groq retry after a primary HTTP 429, and requires the feature flag and a model mapping. Upstream usage and costs are charged by the configured provider account.</p>
     <div class="docs-footer">Aethel AI · <a href="/">Home</a> · <a href="/api/health">API health</a></div>
   </main>

@@ -1,4 +1,4 @@
-const { configuration, send, fail, database, bearer, hash } = require('../../_lib/gateway');
+const { configuration, send, fail, database, bearer, hash, quotaResetsAt, startUsage, finishUsage } = require('../../_lib/gateway');
 
 const allowedFields = ['temperature', 'top_p', 'max_tokens', 'max_completion_tokens', 'stop', 'response_format', 'tools', 'tool_choice', 'parallel_tool_calls', 'seed'];
 
@@ -40,22 +40,32 @@ module.exports = async function handler(req, res) {
 
   let apiKeyRow;
   try {
-    const rows = await database(`aethel_api_keys?key_hash=eq.${hash(key)}&disabled_at=is.null&select=id,name&limit=1`);
+    let rows;
+    try {
+      rows = await database(`aethel_api_keys?key_hash=eq.${hash(key)}&disabled_at=is.null&select=id,name,daily_limit&limit=1`);
+    } catch (error) {
+      // Keep chat serving during the deployment window before the beta migration is applied.
+      if (!error.detail?.includes('daily_limit')) throw error;
+      rows = await database(`aethel_api_keys?key_hash=eq.${hash(key)}&disabled_at=is.null&select=id,name&limit=1`);
+    }
     apiKeyRow = rows?.[0];
   } catch (_) {
     return fail(res, 503, 'service_unavailable', 'The key service is temporarily unavailable.');
   }
   if (!apiKeyRow) return fail(res, 401, 'unauthorized', 'This API key is invalid or disabled.');
 
+  const dailyLimit = Number.isInteger(apiKeyRow.daily_limit) ? apiKeyRow.daily_limit : cfg.dailyLimit;
   let usageId;
   try {
-    usageId = await database('rpc/aethel_start_request', {
-      method: 'POST',
-      body: JSON.stringify({ p_key_id: apiKeyRow.id, p_model: input.model, p_daily_limit: cfg.dailyLimit }),
-    });
-    if (typeof usageId !== 'string') throw new Error('REQUEST_NOT_CLAIMED');
+    usageId = await startUsage(apiKeyRow.id, input.model, dailyLimit);
   } catch (error) {
-    if (error.detail?.includes('daily_limit_reached')) return fail(res, 429, 'daily_limit_reached', 'This key has reached its daily request limit.');
+    if (error.detail?.includes('daily_limit_reached')) {
+      return send(res, 429, {
+        error: 'rate_limit_exceeded',
+        message: 'Daily pilot limit reached.',
+        resets_at: quotaResetsAt(),
+      });
+    }
     return fail(res, 503, 'service_unavailable', 'Usage metering is temporarily unavailable.');
   }
 
@@ -135,20 +145,4 @@ async function requestProvider(baseUrl, apiKey, payload) {
   } catch (_) {
     return { response: null, result: null, networkError: true };
   }
-}
-
-async function finishUsage(id, status, usage, model) {
-  const body = {
-    status,
-    prompt_tokens: Number.isInteger(usage?.prompt_tokens) ? usage.prompt_tokens : 0,
-    completion_tokens: Number.isInteger(usage?.completion_tokens) ? usage.completion_tokens : 0,
-    total_tokens: Number.isInteger(usage?.total_tokens) ? usage.total_tokens : 0,
-    completed_at: new Date().toISOString(),
-  };
-  if (model) body.model = model;
-  await database(`aethel_usage?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify(body),
-  });
 }

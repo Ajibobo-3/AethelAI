@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "npx vercel dev",
     "start": "npx vercel dev",
-    "smoke": "node scripts/live-smoke.js"
+    "smoke": "node scripts/live-smoke.js",
+    "test": "node --test"
   }
 }

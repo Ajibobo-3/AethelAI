@@ -7,12 +7,12 @@ The gateway can optionally retry a primary-provider HTTP 429 through a model-map
 ## Configure the service
 
 1. Create a Supabase project.
-2. Apply `supabase/migrations/202610230001_aethel_gateway.sql` in the Supabase SQL Editor.
+2. Apply both SQL migrations in order: `supabase/migrations/202610230001_aethel_gateway.sql`, then `supabase/migrations/202610240001_aethel_agent_beta.sql`.
 3. Add the variables from `.env.example` under Vercel Project Settings → Environment Variables. Use a Supabase project URL, its server-only secret key (`SUPABASE_SECRET_KEY`; the legacy `SUPABASE_SERVICE_ROLE_KEY` is also supported), a provider API key, and a strong random `AETHEL_ADMIN_KEY`. Store these as server-side secrets only.
 4. Set the `AETHEL_ALLOWED_MODELS` list to the model IDs available to your provider account. The default is `gpt-4o-mini`.
 5. Deploy the project and check `/api/health`.
 
-Set `AETHEL_DAILY_REQUEST_LIMIT` to change the default of 100 attempted requests per key per UTC day. Requests that fail at the provider still count against the limit. `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). `OPENAI_BASE_URL` can point to another OpenAI-compatible primary. Production currently has Groq fallback enabled. For other deployments, configure `GROQ_API_KEY`, set `AETHEL_ENABLE_GROQ_FALLBACK=true`, and map each public model to a supported Groq model in `AETHEL_GROQ_MODEL_MAP`. The default mapping sends `gpt-4o-mini` fallback requests to Groq’s `openai/gpt-oss-20b`.
+`AETHEL_DAILY_REQUEST_LIMIT` sets the default of 100 attempted requests per key per UTC day; each key stores its own cap. Requests that fail at the provider still count against the limit. `AETHEL_MAX_DAILY_REQUEST_LIMIT` sets the admin top-up ceiling (default 10,000). `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). `OPENAI_BASE_URL` can point to another OpenAI-compatible primary. Production currently has Groq fallback enabled. For other deployments, configure `GROQ_API_KEY`, set `AETHEL_ENABLE_GROQ_FALLBACK=true`, and map each public model to a supported Groq model in `AETHEL_GROQ_MODEL_MAP`. The default mapping sends `gpt-4o-mini` fallback requests to Groq’s `openai/gpt-oss-20b`.
 
 ## Issue and disable customer keys
 
@@ -48,7 +48,22 @@ Supported routes:
 - `GET /api/health` — checks database reachability and provider configuration.
 - `POST /api/v1/keys` — creates a customer key with the admin secret.
 - `POST /api/v1/keys/revoke` — disables a customer key with the admin secret; send the key `id` in the JSON body.
+- `POST /api/v1/keys/topup` — increase a key's daily cap with `{"id":"KEY_ID","increase_by":50}` or restore the configured default with `{"id":"KEY_ID","reset":true}`. Admin secret required. The cap cannot exceed `AETHEL_MAX_DAILY_REQUEST_LIMIT`; usage records are retained.
 - `POST /api/v1/chat/completions` — authenticated non-streaming chat completion.
+- `POST /api/v1/agent/run` — authenticated, metered agent run with up to five model/tool iterations and a Supabase-backed session.
+
+## Run an agent task
+
+The agent stores conversation history and tool-step outputs in `agent_sessions`, scoped to the authenticated API key. For safety, only the server-side `calculator` and `get_utc_time` tools are executable in this beta; arbitrary tools or caller-provided code are rejected. Requests without tools can still run as a single-turn agent.
+
+```sh
+curl -X POST https://www.aethelai.online/api/v1/agent/run \
+  -H "Authorization: Bearer $AETHEL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"What is 19 times 23?","session_id":"pilot-session-1","tools":[{"type":"function","function":{"name":"calculator","parameters":{"type":"object"}}}]}'
+```
+
+The server uses its configured default allowed model, executes no more than five completion/tool rounds, and returns `session_id`, `status`, `output`, and the current run's `steps`. A daily limit response is HTTP 429 with a UTC `resets_at` value. The beta migration must be applied in Supabase before using agent sessions, per-key caps, or top-ups.
 
 This API currently requires the Vercel deployment because the functions live under `api/`. For local API development, use `npm run dev` (or `npx vercel dev`) so those functions are served. Put `AETHEL_ADMIN_KEY` in the ignored local `.env.local` file or the local terminal environment, then run `npm run smoke` to create a temporary customer key, make one small inference request, and revoke the key. The script never prints the key. Copy `.env.example` to a local environment file and fill it with development credentials. Never commit real credentials.
 
