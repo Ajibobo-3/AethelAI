@@ -3,13 +3,13 @@ const assert = require('node:assert/strict');
 const chatHandler = require('../api/v1/chat/completions');
 const agentHandler = require('../api/v1/agent/run');
 const topupHandler = require('../api/v1/keys/topup');
-const { evaluateArithmetic } = require('../api/_lib/agent-tools');
+const { evaluateArithmetic, selectTools } = require('../api/_lib/agent-tools');
 
 const apiToken = `aethel_live_${'a'.repeat(40)}`;
 const apiKeyId = 'f0ad8b80-335f-4a6b-a62e-98c81dbe12c8';
 const originalFetch = global.fetch;
 const savedEnvironment = {};
-for (const key of ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'AETHEL_ADMIN_KEY', 'AETHEL_ALLOWED_MODELS', 'AETHEL_DAILY_REQUEST_LIMIT', 'AETHEL_MAX_DAILY_REQUEST_LIMIT', 'AETHEL_ENABLE_GROQ_FALLBACK', 'AETHEL_GROQ_MODEL_MAP', 'AETHEL_GROQ_FALLBACK_MODEL', 'GROQ_API_KEY']) {
+for (const key of ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'AETHEL_ADMIN_KEY', 'AETHEL_ALLOWED_MODELS', 'AETHEL_DAILY_REQUEST_LIMIT', 'AETHEL_MAX_DAILY_REQUEST_LIMIT', 'AETHEL_MAX_OUTPUT_TOKENS', 'AETHEL_ENABLE_GROQ_FALLBACK', 'AETHEL_GROQ_MODEL_MAP', 'AETHEL_GROQ_FALLBACK_MODEL', 'GROQ_API_KEY']) {
   savedEnvironment[key] = process.env[key];
 }
 test.after(() => {
@@ -30,6 +30,7 @@ function setTestEnvironment() {
     AETHEL_ALLOWED_MODELS: 'gpt-4o-mini',
     AETHEL_DAILY_REQUEST_LIMIT: '100',
     AETHEL_MAX_DAILY_REQUEST_LIMIT: '1000',
+    AETHEL_MAX_OUTPUT_TOKENS: '4096',
     AETHEL_ENABLE_GROQ_FALLBACK: 'false',
     AETHEL_GROQ_FALLBACK_MODEL: 'llama3-8b-8192',
     AETHEL_GROQ_MODEL_MAP: '{"gpt-4o-mini":"openai/gpt-oss-20b"}',
@@ -63,6 +64,14 @@ test('calculator supports arithmetic while rejecting executable input', () => {
   assert.throws(() => evaluateArithmetic('5 / 0'), /Division by zero/);
 });
 
+test('tool schemas include object type, properties, and required fields', () => {
+  const selected = selectTools([{ type: 'function', function: { name: 'get_utc_time' } }]);
+  assert.deepEqual(selected.definitions[0].function.parameters, {
+    type: 'object', properties: {}, required: [], additionalProperties: false,
+  });
+  assert.deepEqual(selectTools().definitions, []);
+});
+
 test('agent uses Groq without an OpenAI key, stores history and tool step output', async () => {
   setTestEnvironment();
   const storedSessions = [];
@@ -86,6 +95,8 @@ test('agent uses Groq without an OpenAI key, stores history and tool step output
     assert.equal(options.headers.Authorization, 'Bearer test-groq-secret');
     providerRequests.push(JSON.parse(options.body));
     assert.equal(providerRequests.at(-1).model, 'llama-3.3-70b-versatile');
+    assert.equal(providerRequests.at(-1).max_tokens, 2048);
+    assert.equal(providerRequests.at(-1).temperature, 0.7);
     if (providerRequests.length === 1) {
       return jsonResponse({
         choices: [{ message: { role: 'assistant', content: null, tool_calls: [{
@@ -202,7 +213,8 @@ test('chat routes directly to Groq using the mapped model without contacting Ope
     return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'fallback response' } }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } });
   };
   const res = await invoke(chatHandler, {
-    model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'hello' }],
+    model: 'gpt-4o-mini', messages: [{ role: 'user', content: { text: 'hello' } }],
+    temperature: 1.9, max_tokens: 9000, tools: [],
   }, { authorization: `Bearer ${apiToken}` });
 
   assert.equal(res.statusCode, 200);
@@ -210,7 +222,43 @@ test('chat routes directly to Groq using the mapped model without contacting Ope
   assert.equal(calls.length, 1);
   assert.equal(calls[0].authorization, 'Bearer test-groq-secret');
   assert.equal(calls[0].body.model, 'llama-3.3-70b-versatile');
+  assert.equal(calls[0].body.max_tokens, 2048);
+  assert.equal(calls[0].body.temperature, 0.7);
+  assert.equal(calls[0].body.messages[0].content, 'hello');
+  assert.equal(Object.hasOwn(calls[0].body, 'tools'), false);
   assert.equal(usageFinished, true);
+});
+
+test('agent retries a tool-enabled Groq failure without tool parameters', async () => {
+  setTestEnvironment();
+  const payloads = [];
+  global.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'db.test.invalid') {
+      if (parsed.pathname.endsWith('/aethel_api_keys')) return jsonResponse([{ id: apiKeyId, daily_limit: 8 }]);
+      if (parsed.pathname.endsWith('/rpc/aethel_start_request')) return jsonResponse('usage-tool-retry');
+      if (parsed.pathname.endsWith('/agent_sessions') && (!options.method || options.method === 'GET')) return jsonResponse([]);
+      if (parsed.pathname.endsWith('/agent_sessions') && options.method === 'POST') return new Response(null, { status: 204 });
+      if (parsed.pathname.endsWith('/aethel_usage')) return new Response(null, { status: 204 });
+    }
+    const payload = JSON.parse(options.body);
+    payloads.push(payload);
+    if (payloads.length === 1) return jsonResponse({ error: { message: 'tool mode unavailable' } }, 400);
+    return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'Plain chat fallback response.' } }] });
+  };
+  const res = await invoke(agentHandler, {
+    task: 'Use a tool if needed.', session_id: 'tool-retry',
+    tools: [{ type: 'function', function: { name: 'calculator' } }],
+  }, { authorization: `Bearer ${apiToken}` });
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.output, 'Plain chat fallback response.');
+  assert.ok(Array.isArray(payloads[0].tools));
+  assert.equal(Object.hasOwn(payloads[0].tools[0].function.parameters, 'type'), true);
+  assert.equal(Object.hasOwn(payloads[0].tools[0].function.parameters, 'properties'), true);
+  assert.ok(Array.isArray(payloads[0].tools[0].function.parameters.required));
+  assert.equal(Object.hasOwn(payloads[1], 'tools'), false);
+  assert.equal(Object.hasOwn(payloads[1], 'tool_choice'), false);
+  assert.equal(payloads[1].messages[0].content, 'Use a tool if needed.');
 });
 
 test('agent returns a structured Groq provider error', async () => {

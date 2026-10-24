@@ -17,12 +17,12 @@ const toolDefinitions = {
     function: {
       name: 'get_utc_time',
       description: 'Get the current time in UTC.',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
     },
   },
 };
 
-function selectTools(tools) {
+function selectTools(tools = []) {
   if (!Array.isArray(tools) || tools.length > 8) throw new Error('invalid_tools');
   const selected = [];
   const names = new Set();

@@ -1,6 +1,6 @@
 const { configuration, send, fail, database, bearer, hash, quotaResetsAt, startUsage, finishUsage } = require('../../_lib/gateway');
 
-const allowedFields = ['temperature', 'top_p', 'max_tokens', 'max_completion_tokens', 'stop', 'response_format', 'tools', 'tool_choice', 'parallel_tool_calls', 'seed'];
+const allowedFields = ['top_p', 'stop', 'response_format', 'tool_choice', 'parallel_tool_calls', 'seed'];
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -23,8 +23,8 @@ module.exports = async function handler(req, res) {
     return fail(res, 400, 'invalid_token_limit', 'Provide only one output token limit field.');
   }
   const requestedTokenLimit = input.max_completion_tokens ?? input.max_tokens;
-  if (requestedTokenLimit !== undefined && (!Number.isInteger(requestedTokenLimit) || requestedTokenLimit < 1 || requestedTokenLimit > cfg.maxOutputTokens)) {
-    return fail(res, 400, 'invalid_token_limit', `The output token limit must be between 1 and ${cfg.maxOutputTokens}.`);
+  if (requestedTokenLimit !== undefined && (!Number.isInteger(requestedTokenLimit) || requestedTokenLimit < 1)) {
+    return fail(res, 400, 'invalid_token_limit', 'The output token limit must be a positive integer.');
   }
   if (typeof input.model !== 'string' || !cfg.models.includes(input.model)) {
     return fail(res, 400, 'model_not_allowed', `Choose one of the enabled models: ${cfg.models.join(', ')}.`);
@@ -37,6 +37,12 @@ module.exports = async function handler(req, res) {
       return fail(res, 400, 'invalid_messages', 'Each message needs a supported role and content.');
     }
   }
+  let messages;
+  try { messages = input.messages.map(message => ({ ...message, content: plainText(message.content) })); }
+  catch (_) { return fail(res, 400, 'invalid_messages', 'Message content must be convertible to plain text.'); }
+  let tools;
+  try { tools = normalizeTools(input.tools); }
+  catch (_) { return fail(res, 400, 'invalid_tools', 'Tools must use OpenAI-compatible function definitions with object parameters, properties, and required fields.'); }
 
   let apiKeyRow;
   try {
@@ -70,12 +76,29 @@ module.exports = async function handler(req, res) {
   }
 
   const actualModel = cfg.groqModelMap[input.model] || input.model;
-  const payload = { model: actualModel, messages: input.messages };
+  const payload = { model: actualModel, messages, temperature: 0.7 };
   for (const field of allowedFields) if (input[field] !== undefined) payload[field] = input[field];
-  if (input.max_tokens !== undefined) payload.max_tokens = input.max_tokens;
-  else payload.max_completion_tokens = input.max_completion_tokens ?? cfg.maxOutputTokens;
+  payload.max_tokens = Math.min(requestedTokenLimit ?? cfg.maxOutputTokens, cfg.maxOutputTokens, 2048);
+  if (tools.length) payload.tools = tools;
+  else {
+    delete payload.tools;
+    delete payload.tool_choice;
+    delete payload.parallel_tool_calls;
+  }
   const provider = 'groq';
   let attempt = await requestProvider(cfg.providerUrl, cfg.providerKey, payload);
+  if (attempt.networkError || !attempt.response?.ok || !attempt.result) {
+    if (!attempt.networkError) logGroqError(actualModel, attempt);
+    if (payload.tools?.length) {
+      const plainPayload = { ...payload };
+      delete plainPayload.tools;
+      delete plainPayload.tool_choice;
+      delete plainPayload.parallel_tool_calls;
+      console.warn('[aethel:groq_tool_call_fallback]', JSON.stringify({ model: actualModel, upstream_status: attempt.response?.status || null, network_error: Boolean(attempt.networkError) }));
+      attempt = await requestProvider(cfg.providerUrl, cfg.providerKey, plainPayload);
+      if (!attempt.networkError && (!attempt.response.ok || !attempt.result)) logGroqError(actualModel, attempt);
+    }
+  }
   if (attempt.networkError) {
     try { await finishUsage(usageId, 'failed', null); } catch (_) { /* Keep the upstream failure response safe. */ }
     return res.status(502).json({ error: { code: 'provider_unavailable', message: 'Groq could not be reached. Retry the request.', provider: 'groq', retryable: true } });
@@ -112,8 +135,51 @@ async function requestProvider(baseUrl, apiKey, payload) {
     const text = await response.text();
     let result;
     try { result = JSON.parse(text); } catch (_) { result = null; }
-    return { response, result, networkError: false };
+    return { response, result, errorBody: text, networkError: false };
   } catch (_) {
     return { response: null, result: null, networkError: true };
   }
+}
+
+function normalizeTools(tools) {
+  if (tools === undefined || tools === null) return [];
+  if (!Array.isArray(tools) || tools.length > 8) throw new Error('INVALID_TOOLS');
+  return tools.map(tool => {
+    const fn = tool?.function;
+    const parameters = fn?.parameters;
+    if (tool?.type !== 'function' || typeof fn?.name !== 'string' || !fn.name.trim()
+      || !parameters || typeof parameters !== 'object' || Array.isArray(parameters)
+      || parameters.type !== 'object' || !parameters.properties || typeof parameters.properties !== 'object'
+      || Array.isArray(parameters.properties)) throw new Error('INVALID_TOOL_SCHEMA');
+    const required = parameters.required ?? [];
+    if (!Array.isArray(required) || required.some(name => typeof name !== 'string' || !Object.hasOwn(parameters.properties, name))) {
+      throw new Error('INVALID_TOOL_SCHEMA');
+    }
+    return {
+      type: 'function',
+      function: {
+        name: fn.name.trim(),
+        ...(typeof fn.description === 'string' ? { description: fn.description } : {}),
+        parameters: { ...parameters, type: 'object', properties: parameters.properties, required },
+      },
+    };
+  });
+}
+
+function plainText(value) {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(plainText).filter(Boolean).join('\n');
+  if (value && typeof value === 'object') {
+    if (typeof value.text === 'string') return value.text;
+    if (typeof value.content === 'string') return value.content;
+    return Object.values(value).map(plainText).filter(Boolean).join('\n');
+  }
+  return '';
+}
+
+function logGroqError(model, attempt) {
+  console.error('[aethel:groq_api_error]', JSON.stringify({
+    provider: 'groq', model, status: attempt.response.status, response_body: attempt.errorBody,
+  }));
 }

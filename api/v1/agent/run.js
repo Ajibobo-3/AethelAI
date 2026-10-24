@@ -27,7 +27,7 @@ module.exports = async function handler(req, res) {
     return fail(res, 400, 'invalid_session_id', 'Provide a session_id of 1 to 100 letters, numbers, dots, underscores, colons, or hyphens.');
   }
   let selectedTools;
-  try { selectedTools = selectTools(body.tools); }
+  try { selectedTools = selectTools(body.tools ?? []); }
   catch (error) {
     const code = error.message === 'unsupported_tool' ? 'unsupported_tool' : 'invalid_tools';
     return fail(res, 400, code, 'Tools must be unique supported function definitions. Available tools: calculator and get_utc_time.');
@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
     const rows = await database(`agent_sessions?key_id=eq.${encodeURIComponent(keyRow.id)}&session_id=eq.${encodeURIComponent(sessionId)}&select=history,steps`);
     session = rows?.[0] || { history: [], steps: [] };
     if (!Array.isArray(session.history) || !Array.isArray(session.steps)) throw new Error('INVALID_SESSION_DATA');
-    const history = session.history;
+    const history = session.history.map(normalizeHistoryMessage);
     const allSteps = session.steps;
     if (Buffer.byteLength(JSON.stringify(history), 'utf8') > MAX_HISTORY_BYTES) {
       await finishUsage(usageId, 'failed', usage);
@@ -95,13 +95,14 @@ module.exports = async function handler(req, res) {
       const payload = {
         model,
         messages: history,
-        max_completion_tokens: cfg.maxOutputTokens,
+        max_tokens: Math.min(cfg.maxOutputTokens, 2048),
+        temperature: 0.7,
       };
       if (selectedTools.definitions.length) {
         payload.tools = selectedTools.definitions;
         payload.tool_choice = 'auto';
       }
-      const routed = await requestGroq(cfg, payload);
+      const routed = await requestWithPlainChatFallback(cfg, payload);
       lastProvider = routed.provider;
       lastModel = routed.model;
       if (routed.networkError) {
@@ -228,6 +229,42 @@ async function requestGroq(cfg, payload) {
   const fallback = await requestProvider(cfg.providerUrl, cfg.providerKey, { ...payload, model: fallbackModel });
   if (!fallback.networkError && !fallback.response.ok) logGroqError(fallbackModel, fallback);
   return { ...fallback, provider: 'groq', model: fallbackModel };
+}
+
+async function requestWithPlainChatFallback(cfg, payload) {
+  const first = await requestGroq(cfg, payload);
+  if (!payload.tools?.length || (!first.networkError && first.response?.ok && first.result)) return first;
+
+  console.warn('[aethel:groq_tool_call_fallback]', JSON.stringify({
+    model: first.model,
+    upstream_status: first.response?.status || null,
+    network_error: Boolean(first.networkError),
+  }));
+  const plainPayload = { ...payload };
+  delete plainPayload.tools;
+  delete plainPayload.tool_choice;
+  return requestGroq(cfg, plainPayload);
+}
+
+function normalizeHistoryMessage(message) {
+  if (!message || !['system', 'developer', 'user', 'assistant', 'tool'].includes(message.role)) {
+    throw new Error('INVALID_SESSION_DATA');
+  }
+  const normalized = { ...message, content: plainText(message.content) };
+  if (message.role !== 'assistant') delete normalized.tool_calls;
+  return normalized;
+}
+
+function plainText(value) {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(plainText).filter(Boolean).join('\n');
+  if (value && typeof value === 'object') {
+    if (typeof value.text === 'string') return value.text;
+    if (typeof value.content === 'string') return value.content;
+    return Object.values(value).map(plainText).filter(Boolean).join('\n');
+  }
+  return '';
 }
 
 function isModelUnavailable(attempt) {
