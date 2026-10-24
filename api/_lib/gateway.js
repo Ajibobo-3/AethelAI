@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
-const GROQ_PRIMARY_MODEL = 'llama-3.1-70b-versatile';
-const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant';
+const GROQ_PRIMARY_MODEL = 'llama-3.1-8b-instant';
+const GROQ_FALLBACK_MODEL = 'llama-3.3-70b-versatile';
 
 function configuration() {
   return {
@@ -33,7 +33,7 @@ function parseGroqModelMap(value) {
     if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return defaultMap;
     const overrides = Object.fromEntries(Object.entries(parsed).filter(([from, to]) =>
       typeof from === 'string' && from.length > 0 && !Object.hasOwn(defaultMap, from) && typeof to === 'string' && to.length > 0
-    ).map(([from, to]) => [from, to === GROQ_FALLBACK_MODEL ? GROQ_FALLBACK_MODEL : GROQ_PRIMARY_MODEL]));
+    ).map(([from, to]) => [from, normalizeGroqModel(to)]));
     return { ...defaultMap, ...overrides };
   } catch {
     return defaultMap;
@@ -41,7 +41,7 @@ function parseGroqModelMap(value) {
 }
 
 function normalizeGroqModel(model) {
-  if (model === GROQ_PRIMARY_MODEL || model === GROQ_FALLBACK_MODEL) return model;
+  if (typeof model === 'string' && /^llama-3\.\d+-\d+b-(?:instant|versatile)$/.test(model)) return model;
   return GROQ_PRIMARY_MODEL;
 }
 

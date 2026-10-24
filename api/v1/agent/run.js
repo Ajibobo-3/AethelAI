@@ -12,7 +12,6 @@ module.exports = async function handler(req, res) {
     return fail(res, 405, 'method_not_allowed', 'Use POST to run an agent task.');
   }
   const cfg = configuration();
-  const model = resolveGroqModel(cfg.models[0] || 'llama-3.1-70b-versatile', cfg);
   const apiKey = bearer(req);
   if (!apiKey) return fail(res, 401, 'unauthorized', 'Provide an Aethel API key as a Bearer token.');
   if (!cfg.supabaseUrl || !cfg.supabaseKey || !cfg.providerKey) {
@@ -42,6 +41,20 @@ module.exports = async function handler(req, res) {
     return fail(res, 503, 'service_unavailable', 'The key service is temporarily unavailable.');
   }
   if (!keyRow) return fail(res, 401, 'unauthorized', 'This API key is invalid or disabled.');
+
+  const discovery = await discoverGroqModels(cfg);
+  if (!discovery.ok) {
+    return send(res, 502, { error: { code: 'model_discovery_failed', message: 'Could not verify Groq model availability.', provider: 'groq', upstream_status: discovery.status || null, retryable: true } });
+  }
+  if (discovery.activeModels.length === 0) {
+    console.error('[aethel:groq_no_active_llama_models]', JSON.stringify({ available_model_ids: discovery.modelIds }));
+    return send(res, 503, { error: { code: 'no_supported_models', message: 'Groq returned no active Llama 3 text models for this account.', provider: 'groq', retryable: false } });
+  }
+  const requestedModel = resolveGroqModel(cfg.models[0] || 'llama-3.1-8b-instant', cfg);
+  const model = discovery.activeModels.includes(requestedModel) ? requestedModel : discovery.activeModels[0];
+  if (model !== requestedModel) {
+    console.info('[aethel:groq_model_selected_from_discovery]', JSON.stringify({ requested_model: requestedModel, selected_model: model, available_model_ids: discovery.modelIds }));
+  }
 
   let usageId;
   try {
@@ -101,7 +114,7 @@ module.exports = async function handler(req, res) {
         payload.tools = selectedTools.definitions;
         payload.tool_choice = 'auto';
       }
-      const routed = await requestWithPlainChatFallback(cfg, payload);
+      const routed = await requestWithPlainChatFallback(cfg, payload, discovery.activeModels);
       lastProvider = routed.provider;
       lastModel = routed.model;
       if (routed.networkError) {
@@ -212,26 +225,29 @@ module.exports = async function handler(req, res) {
   }
 };
 
-async function requestGroq(cfg, payload) {
+async function requestGroq(cfg, payload, availableModels) {
   const primary = await requestProvider(cfg.providerUrl, cfg.providerKey, payload);
-  if (!primary.networkError && !primary.response.ok) logGroqError(payload.model, primary);
+  if (!primary.networkError && !primary.response.ok) logGroqError(payload.model, primary, availableModels);
   if (primary.networkError || !isModelUnavailable(primary)) {
     return { ...primary, provider: 'groq', model: payload.model };
   }
 
-  const fallbackModel = cfg.groqFallbackModel || 'llama-3.1-8b-instant';
+  const fallbackModel = availableModels.includes(cfg.groqFallbackModel) && cfg.groqFallbackModel !== payload.model
+    ? cfg.groqFallbackModel
+    : availableModels.find(candidate => candidate !== payload.model) || cfg.groqFallbackModel;
   console.warn('[aethel:groq_model_fallback]', JSON.stringify({
     primary_model: payload.model,
     fallback_model: fallbackModel,
     upstream_status: primary.response.status,
+    available_model_ids: availableModels,
   }));
   const fallback = await requestProvider(cfg.providerUrl, cfg.providerKey, { ...payload, model: fallbackModel });
-  if (!fallback.networkError && !fallback.response.ok) logGroqError(fallbackModel, fallback);
+  if (!fallback.networkError && !fallback.response.ok) logGroqError(fallbackModel, fallback, availableModels);
   return { ...fallback, provider: 'groq', model: fallbackModel };
 }
 
-async function requestWithPlainChatFallback(cfg, payload) {
-  const first = await requestGroq(cfg, payload);
+async function requestWithPlainChatFallback(cfg, payload, availableModels) {
+  const first = await requestGroq(cfg, payload, availableModels);
   if (!payload.tools?.length || (!first.networkError && first.response?.ok && first.result)) return first;
 
   console.warn('[aethel:groq_tool_call_fallback]', JSON.stringify({
@@ -242,7 +258,7 @@ async function requestWithPlainChatFallback(cfg, payload) {
   const plainPayload = { ...payload };
   delete plainPayload.tools;
   delete plainPayload.tool_choice;
-  return requestGroq(cfg, plainPayload);
+  return requestGroq(cfg, plainPayload, availableModels);
 }
 
 function normalizeHistoryMessage(message) {
@@ -271,17 +287,42 @@ function isModelUnavailable(attempt) {
   const error = attempt.result?.error;
   const code = typeof error?.code === 'string' ? error.code.toLowerCase() : '';
   const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
-  return ['model_not_found', 'model_unavailable', 'model_decommissioned'].includes(code)
+  const modelError = ['model_not_found', 'model_unavailable', 'model_decommissioned'].includes(code)
     || /model.{0,30}(not found|unavailable|decommissioned)|(?:not found|unavailable).{0,30}model/.test(message);
+  return modelError || (attempt.response?.status === 400 && /model/.test(message));
 }
 
-function logGroqError(model, attempt) {
+function logGroqError(model, attempt, availableModels = []) {
   console.error('[aethel:groq_api_error]', JSON.stringify({
     provider: 'groq',
     model,
     status: attempt.response.status,
     response_body: attempt.errorBody,
+    available_model_ids: availableModels,
   }));
+}
+
+async function discoverGroqModels(cfg) {
+  try {
+    const response = await fetch(`${cfg.providerUrl}/models`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${cfg.providerKey}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await response.text();
+    let result;
+    try { result = JSON.parse(body); } catch (_) { result = null; }
+    if (!response.ok || !Array.isArray(result?.data)) {
+      console.error('[aethel:groq_model_discovery_error]', JSON.stringify({ status: response.status, response_body: body }));
+      return { ok: false, status: response.status, modelIds: [], activeModels: [] };
+    }
+    const modelIds = result.data.map(model => model?.id).filter(id => typeof id === 'string');
+    const activeModels = modelIds.filter(id => /^llama-3\.\d+-\d+b-(?:instant|versatile)$/.test(id));
+    return { ok: true, modelIds, activeModels };
+  } catch (error) {
+    console.error('[aethel:groq_model_discovery_error]', JSON.stringify({ message: error?.message || 'Groq model discovery failed.' }));
+    return { ok: false, status: null, modelIds: [], activeModels: [] };
+  }
 }
 
 async function requestProvider(baseUrl, apiKey, payload) {

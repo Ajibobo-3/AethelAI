@@ -2,17 +2,17 @@
 
 Aethel is an OpenAI-compatible chat completion gateway deployed as Vercel Functions. It authenticates customer API keys, enforces an atomic per-key daily request quota, routes inference through Groq, and records provider-reported token usage in Supabase Postgres.
 
-Groq is the only inference provider currently configured in the gateway. Agent runs retry once with `llama-3.1-8b-instant` if Groq reports that the primary model is unavailable. Requests are billed to the configured Groq account. Distributed GPU routing and customer billing are not implemented. Treat the current V1 as a private API pilot; provider usage is paid from the operator’s provider account.
+Groq is the only inference provider currently configured in the gateway. Before each agent run, the gateway discovers the account’s available Llama 3 text models. It defaults to `llama-3.1-8b-instant` and retries with `llama-3.3-70b-versatile` if the primary is unavailable. Requests are billed to the configured Groq account. Distributed GPU routing and customer billing are not implemented. Treat the current V1 as a private API pilot; provider usage is paid from the operator’s provider account.
 
 ## Configure the service
 
 1. Create a Supabase project.
 2. Apply both SQL migrations in order: `supabase/migrations/202610230001_aethel_gateway.sql`, then `supabase/migrations/202610240001_aethel_agent_beta.sql`.
 3. Add the variables from `.env.example` under Vercel Project Settings → Environment Variables. Use a Supabase project URL, its server-only secret key (`SUPABASE_SECRET_KEY`; the legacy `SUPABASE_SERVICE_ROLE_KEY` is also supported), a provider API key, and a strong random `AETHEL_ADMIN_KEY`. Store these as server-side secrets only.
-4. Set `GROQ_API_KEY` and set the `AETHEL_ALLOWED_MODELS` list to the public model IDs accepted by your clients. The default inference model is `llama-3.1-70b-versatile`; `gpt-4o` and `gpt-4o-mini` map to that model for compatibility. Unknown model IDs also route to the primary model.
+4. Set `GROQ_API_KEY` and set the `AETHEL_ALLOWED_MODELS` list to the public model IDs accepted by your clients. The default inference model is `llama-3.1-8b-instant`; `gpt-4o` and `gpt-4o-mini` map to that model for compatibility. Unknown model IDs also route to the primary model. Agent requests first check `/openai/v1/models` and use the first available Llama 3 text model if the configured model is missing.
 5. Deploy the project and check `/api/health`.
 
-`AETHEL_DAILY_REQUEST_LIMIT` sets the default of 100 attempted requests per key per UTC day; each key stores its own cap. Requests that fail at the provider still count against the limit. `AETHEL_MAX_DAILY_REQUEST_LIMIT` sets the admin top-up ceiling (default 10,000). `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). The agent fallback is fixed to `llama-3.1-8b-instant`. Optional custom public model mappings can be supplied with `AETHEL_GROQ_MODEL_MAP`; standard compatibility aliases are pinned to active Groq model IDs in code.
+`AETHEL_DAILY_REQUEST_LIMIT` sets the default of 100 attempted requests per key per UTC day; each key stores its own cap. Requests that fail at the provider still count against the limit. `AETHEL_MAX_DAILY_REQUEST_LIMIT` sets the admin top-up ceiling (default 10,000). `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). The agent fallback is fixed to `llama-3.3-70b-versatile`. Optional custom public model mappings can be supplied with `AETHEL_GROQ_MODEL_MAP`; standard compatibility aliases are pinned to active Groq model IDs in code.
 
 ## Issue and disable customer keys
 
