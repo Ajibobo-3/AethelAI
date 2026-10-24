@@ -4,12 +4,15 @@ function configuration() {
   return {
     supabaseUrl: (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, ''),
     supabaseKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
-    providerKey: process.env.OPENAI_API_KEY,
-    providerUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+    // Groq is the configured primary provider. Do not inspect or depend on an
+    // OpenAI key: an empty or exhausted OpenAI account must never block inference.
+    providerKey: process.env.GROQ_API_KEY,
+    providerUrl: 'https://api.groq.com/openai/v1',
+    providerName: 'groq',
     groqKey: process.env.GROQ_API_KEY,
     groqFallbackEnabled: /^true$/i.test((process.env.AETHEL_ENABLE_GROQ_FALLBACK || '').trim()),
     groqModelMap: parseGroqModelMap(process.env.AETHEL_GROQ_MODEL_MAP),
-    models: (process.env.AETHEL_ALLOWED_MODELS || 'gpt-4o-mini').split(',').map(x => x.trim()).filter(Boolean),
+    models: (process.env.AETHEL_ALLOWED_MODELS || 'llama-3.3-70b-versatile').split(',').map(x => x.trim()).filter(Boolean),
     dailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_DAILY_REQUEST_LIMIT || '100', 10) || 100),
     maxDailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_MAX_DAILY_REQUEST_LIMIT || '10000', 10) || 10000),
     maxOutputTokens: Math.max(1, Number.parseInt(process.env.AETHEL_MAX_OUTPUT_TOKENS || '2048', 10) || 2048),
@@ -17,7 +20,10 @@ function configuration() {
 }
 
 function parseGroqModelMap(value) {
-  const defaultMap = { 'gpt-4o-mini': 'openai/gpt-oss-20b' };
+  const defaultMap = {
+    'gpt-4o-mini': 'llama-3.3-70b-versatile',
+    'gpt-4o': 'llama-3.3-70b-versatile',
+  };
   if (!value) return defaultMap;
   try {
     const parsed = JSON.parse(value);

@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
       databaseReady = false;
     }
   }
-  const providerReady = Boolean(cfg.providerKey);
+  const providerReady = Boolean(cfg.groqKey);
   const ready = databaseReady && providerReady;
   res.status(ready ? 200 : 503);
   send(res, ready ? 200 : 503, {
@@ -23,10 +23,10 @@ module.exports = async function handler(req, res) {
     service: 'Aethel AI Gateway',
     components: {
       usage_store: databaseReady ? 'connected' : 'not_configured',
-      inference_provider: providerReady ? 'configured' : 'not_configured',
-      fallback_provider: !cfg.groqKey ? 'not_configured' : cfg.groqFallbackEnabled ? 'enabled' : 'available_disabled',
+      inference_provider: providerReady ? 'groq' : 'not_configured',
     },
     default_model: cfg.models[0] || null,
+    inference_provider: 'groq',
     checked_at: new Date().toISOString(),
   });
 };

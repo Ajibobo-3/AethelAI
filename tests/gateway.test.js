@@ -24,8 +24,8 @@ function setTestEnvironment() {
   Object.assign(process.env, {
     SUPABASE_URL: 'https://db.test.invalid',
     SUPABASE_SECRET_KEY: 'test-supabase-service-secret',
-    OPENAI_API_KEY: 'test-provider-secret',
-    OPENAI_BASE_URL: 'https://provider.test.invalid/v1',
+    OPENAI_API_KEY: '',
+    GROQ_API_KEY: 'test-groq-secret',
     AETHEL_ADMIN_KEY: 'test-admin-secret',
     AETHEL_ALLOWED_MODELS: 'gpt-4o-mini',
     AETHEL_DAILY_REQUEST_LIMIT: '100',
@@ -61,7 +61,7 @@ test('calculator supports arithmetic while rejecting executable input', () => {
   assert.throws(() => evaluateArithmetic('5 / 0'), /Division by zero/);
 });
 
-test('agent runs tool call, stores history and step output, and uses provider bearer auth', async () => {
+test('agent uses Groq without an OpenAI key, stores history and tool step output', async () => {
   setTestEnvironment();
   const storedSessions = [];
   const providerRequests = [];
@@ -80,9 +80,10 @@ test('agent runs tool call, stores history and step output, and uses provider be
       if (parsed.pathname.endsWith('/aethel_usage')) return new Response(null, { status: 204 });
       throw new Error(`Unexpected database request ${options.method || 'GET'} ${parsed.pathname}`);
     }
-    assert.equal(parsed.hostname, 'provider.test.invalid');
-    assert.equal(options.headers.Authorization, 'Bearer test-provider-secret');
+    assert.equal(parsed.hostname, 'api.groq.com');
+    assert.equal(options.headers.Authorization, 'Bearer test-groq-secret');
     providerRequests.push(JSON.parse(options.body));
+    assert.equal(providerRequests.at(-1).model, 'llama-3.3-70b-versatile');
     if (providerRequests.length === 1) {
       return jsonResponse({
         choices: [{ message: { role: 'assistant', content: null, tool_calls: [{
@@ -182,10 +183,8 @@ test('chat quota returns the specified 429 shape and next UTC reset time', async
   assert.ok(Number.isFinite(Date.parse(res.body.resets_at)));
 });
 
-test('chat retries a primary 429 through Groq using the mapped model', async () => {
+test('chat routes directly to Groq using the mapped model without contacting OpenAI', async () => {
   setTestEnvironment();
-  process.env.AETHEL_ENABLE_GROQ_FALLBACK = 'true';
-  process.env.GROQ_API_KEY = 'test-groq-secret';
   let usageFinished = false;
   const calls = [];
   global.fetch = async (url, options = {}) => {
@@ -197,7 +196,6 @@ test('chat retries a primary 429 through Groq using the mapped model', async () 
       throw new Error(`Unexpected database request ${parsed.pathname}`);
     }
     calls.push({ host: parsed.hostname, authorization: options.headers.Authorization, body: JSON.parse(options.body) });
-    if (parsed.hostname === 'provider.test.invalid') return jsonResponse({ error: { message: 'rate limited' } }, 429);
     assert.equal(parsed.hostname, 'api.groq.com');
     return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'fallback response' } }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } });
   };
@@ -207,11 +205,35 @@ test('chat retries a primary 429 through Groq using the mapped model', async () 
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers['x-aethel-provider'], 'groq');
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].authorization, 'Bearer test-provider-secret');
-  assert.equal(calls[1].authorization, 'Bearer test-groq-secret');
-  assert.equal(calls[1].body.model, 'openai/gpt-oss-20b');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].authorization, 'Bearer test-groq-secret');
+  assert.equal(calls[0].body.model, 'llama-3.3-70b-versatile');
   assert.equal(usageFinished, true);
+});
+
+test('agent returns a structured Groq provider error', async () => {
+  setTestEnvironment();
+  global.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'db.test.invalid') {
+      if (parsed.pathname.endsWith('/aethel_api_keys')) return jsonResponse([{ id: apiKeyId, daily_limit: 8 }]);
+      if (parsed.pathname.endsWith('/rpc/aethel_start_request')) return jsonResponse('usage-provider-error');
+      if (parsed.pathname.endsWith('/agent_sessions') && (!options.method || options.method === 'GET')) return jsonResponse([]);
+      if (parsed.pathname.endsWith('/agent_sessions') && options.method === 'POST') return new Response(null, { status: 204 });
+      if (parsed.pathname.endsWith('/aethel_usage')) return new Response(null, { status: 204 });
+    }
+    assert.equal(parsed.hostname, 'api.groq.com');
+    return jsonResponse({ error: { message: 'model unavailable' } }, 404);
+  };
+  const res = await invoke(agentHandler, { task: 'hello', session_id: 'groq-error', tools: [] }, { authorization: `Bearer ${apiToken}` });
+  assert.equal(res.statusCode, 502);
+  assert.deepEqual(res.body.error, {
+    code: 'provider_model_unavailable',
+    message: 'The configured Groq model is unavailable.',
+    provider: 'groq',
+    upstream_status: 404,
+    retryable: false,
+  });
 });
 
 test('admin top-up calls the atomic Supabase procedure and returns the new cap', async () => {

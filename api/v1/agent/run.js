@@ -83,10 +83,11 @@ module.exports = async function handler(req, res) {
     };
     await persist('running');
 
-    const model = cfg.models[0] || 'gpt-4o-mini';
+    const requestedModel = cfg.models[0] || 'llama-3.3-70b-versatile';
+    const model = cfg.groqModelMap[requestedModel] || requestedModel;
     let completedOutput = null;
     let completed = false;
-    let lastProvider = 'openai';
+    let lastProvider = 'groq';
     let lastModel = model;
     const runSteps = [];
 
@@ -100,23 +101,23 @@ module.exports = async function handler(req, res) {
         payload.tools = selectedTools.definitions;
         payload.tool_choice = 'auto';
       }
-      const routed = await requestWithFallback(cfg, payload);
+      const routed = await requestGroq(cfg, payload);
       lastProvider = routed.provider;
       lastModel = routed.model;
       if (routed.networkError) {
         await finishUsage(usageId, 'failed', usage, lastModel);
         await persist('failed');
-        return fail(res, 502, 'provider_unavailable', 'The inference provider did not respond. Retry the request.');
+        return send(res, 502, { error: { code: 'provider_unavailable', message: 'Groq could not be reached. Retry the request.', provider: 'groq', retryable: true } });
       }
       if (!routed.response.ok || !routed.result) {
         await finishUsage(usageId, 'failed', usage, lastModel);
         await persist('failed');
         res.setHeader('X-Aethel-Provider', routed.provider);
         res.setHeader('X-Aethel-Upstream-Status', String(routed.response.status));
-        if (routed.response.status === 429) return fail(res, 429, 'provider_rate_limited', 'The configured inference providers are rate limited. Retry later.');
-        if (routed.response.status === 401 || routed.response.status === 403) return fail(res, 502, 'provider_auth_failed', 'The configured inference provider rejected its credentials.');
-        if (routed.response.status === 404) return fail(res, 502, 'provider_model_unavailable', 'The configured inference provider could not find the model.');
-        return fail(res, 502, 'provider_error', 'The configured inference provider could not complete this request.');
+        if (routed.response.status === 429) return send(res, 429, { error: { code: 'provider_rate_limited', message: 'Groq is rate limiting this request. Retry shortly.', provider: 'groq', upstream_status: 429, retryable: true } });
+        if (routed.response.status === 401 || routed.response.status === 403) return send(res, 502, { error: { code: 'provider_auth_failed', message: 'Groq rejected the configured provider credentials.', provider: 'groq', upstream_status: routed.response.status, retryable: false } });
+        if (routed.response.status === 404) return send(res, 502, { error: { code: 'provider_model_unavailable', message: 'The configured Groq model is unavailable.', provider: 'groq', upstream_status: 404, retryable: false } });
+        return send(res, 502, { error: { code: 'provider_error', message: 'Groq could not complete the inference request.', provider: 'groq', upstream_status: routed.response.status, retryable: routed.response.status >= 500 } });
       }
 
       const modelUsage = routed.result.usage || {};
@@ -211,18 +212,9 @@ module.exports = async function handler(req, res) {
   }
 };
 
-async function requestWithFallback(cfg, payload) {
-  const primary = await requestProvider(cfg.providerUrl, cfg.providerKey, payload);
-  if (primary.networkError || primary.response.status !== 429) {
-    return { ...primary, provider: 'openai', model: payload.model };
-  }
-  const fallbackModel = cfg.groqModelMap[payload.model];
-  if (!cfg.groqFallbackEnabled || !cfg.groqKey || !fallbackModel) {
-    return { ...primary, provider: 'openai', model: payload.model };
-  }
-  const fallbackPayload = { ...payload, model: fallbackModel };
-  const fallback = await requestProvider('https://api.groq.com/openai/v1', cfg.groqKey, fallbackPayload);
-  return { ...fallback, provider: 'groq', model: fallbackModel };
+async function requestGroq(cfg, payload) {
+  const attempt = await requestProvider(cfg.providerUrl, cfg.providerKey, payload);
+  return { ...attempt, provider: 'groq', model: payload.model };
 }
 
 async function requestProvider(baseUrl, apiKey, payload) {
