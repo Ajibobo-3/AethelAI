@@ -72,6 +72,7 @@ module.exports = async function handler(req, res) {
         resets_at: quotaResetsAt(),
       });
     }
+    if (error.detail?.includes('invalid_key')) return fail(res, 401, 'unauthorized', 'This API key is invalid, disabled, or expired.');
     return fail(res, 503, 'service_unavailable', 'Usage metering is temporarily unavailable.');
   }
 

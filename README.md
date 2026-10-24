@@ -7,12 +7,14 @@ Groq is the only inference provider currently configured in the gateway. Before 
 ## Configure the service
 
 1. Create a Supabase project.
-2. Apply both SQL migrations in order: `supabase/migrations/202610230001_aethel_gateway.sql`, then `supabase/migrations/202610240001_aethel_agent_beta.sql`.
+2. Apply all SQL migrations in order: `supabase/migrations/202610230001_aethel_gateway.sql`, `supabase/migrations/202610240001_aethel_agent_beta.sql`, then `supabase/migrations/202610250001_aethel_public_demo_keys.sql`.
 3. Add the variables from `.env.example` under Vercel Project Settings → Environment Variables. Use a Supabase project URL, its server-only secret key (`SUPABASE_SECRET_KEY`; the legacy `SUPABASE_SERVICE_ROLE_KEY` is also supported), a provider API key, and a strong random `AETHEL_ADMIN_KEY`. Store these as server-side secrets only.
 4. Set `GROQ_API_KEY` and set the `AETHEL_ALLOWED_MODELS` list to the public model IDs accepted by your clients. The default inference model is `llama-3.1-8b-instant`; `gpt-4o` and `gpt-4o-mini` map to that model for compatibility. Unknown model IDs also route to the primary model. Agent requests first check `/openai/v1/models`, prefer an available Llama 3 text model, and use another active text chat model if the account has no active Llama 3 model.
 5. Deploy the project and check `/api/health`.
 
 `AETHEL_DAILY_REQUEST_LIMIT` sets the default of 100 attempted requests per key per UTC day; each key stores its own cap. Requests that fail at the provider still count against the limit. `AETHEL_MAX_DAILY_REQUEST_LIMIT` sets the admin top-up ceiling (default 10,000). `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). The agent fallback is fixed to `llama-3.3-70b-versatile`. Optional custom public model mappings can be supplied with `AETHEL_GROQ_MODEL_MAP`; standard compatibility aliases are pinned to active Groq model IDs in code.
+
+The landing page can issue one temporary public demo key per request. Demo keys are limited to 20 requests per UTC day, expire after seven days, and are capped at three issues per source IP per UTC day. The source IP is HMAC-hashed before it is stored for rate limiting.
 
 ## Issue and disable customer keys
 

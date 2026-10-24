@@ -8,6 +8,8 @@
   const description = $('#serviceDescription');
   const databaseStatus = $('#databaseStatus');
   const providerStatus = $('#providerStatus');
+  const pilotAccessButton = $('#requestPilotAccess');
+  const pilotAccessStatus = $('#pilotAccessStatus');
 
   menu.addEventListener('click', () => {
     const isOpen = topbar.classList.toggle('menu-open');
@@ -20,6 +22,37 @@
   }));
 
   $('#year').textContent = new Date().getFullYear();
+
+  pilotAccessButton.addEventListener('click', async () => {
+    if (pilotAccessButton.disabled) return;
+    pilotAccessButton.disabled = true;
+    pilotAccessStatus.textContent = 'Creating your temporary demo key…';
+    pilotAccessStatus.classList.remove('pilot-access-error');
+    pilotAccessButton.firstChild.textContent = 'Creating demo key… ';
+    try {
+      const response = await fetch('/api/v1/keys/public-demo', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: '{}',
+        cache: 'no-store',
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || result.error?.message || 'Demo key creation failed. Please try again.');
+      if (typeof result.api_key !== 'string' || !/^aethel_live_[A-Za-z0-9_-]{30,}$/.test(result.api_key)) {
+        throw new Error('The demo key response was incomplete. Please try again.');
+      }
+      localStorage.setItem('aethel_workspace_api_key', result.api_key);
+      pilotAccessStatus.textContent = 'Demo key saved securely in this browser. Opening the workspace…';
+      window.location.assign('/workspace');
+    } catch (error) {
+      pilotAccessStatus.textContent = error?.name === 'QuotaExceededError'
+        ? 'Browser storage is full. Clear space in local storage, then request a key again.'
+        : error.message || 'Could not save your demo key in this browser.';
+      pilotAccessStatus.classList.add('pilot-access-error');
+      pilotAccessButton.disabled = false;
+      pilotAccessButton.firstChild.textContent = 'Request Pilot Access ';
+    }
+  });
 
   function showStatus(text, ready) {
     statusText.textContent = text;

@@ -63,6 +63,7 @@ module.exports = async function handler(req, res) {
     if (error.detail?.includes('daily_limit_reached')) {
       return send(res, 429, { error: 'rate_limit_exceeded', message: 'Daily pilot limit reached.', resets_at: quotaResetsAt() });
     }
+    if (error.detail?.includes('invalid_key')) return fail(res, 401, 'unauthorized', 'This API key is invalid, disabled, or expired.');
     return fail(res, 503, 'service_unavailable', 'Usage metering is temporarily unavailable.');
   }
 
