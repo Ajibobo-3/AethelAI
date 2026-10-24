@@ -4,6 +4,7 @@ const chatHandler = require('../api/v1/chat/completions');
 const agentHandler = require('../api/v1/agent/run');
 const topupHandler = require('../api/v1/keys/topup');
 const { evaluateArithmetic, selectTools } = require('../api/_lib/agent-tools');
+const { configuration, resolveGroqModel } = require('../api/_lib/gateway');
 
 const apiToken = `aethel_live_${'a'.repeat(40)}`;
 const apiKeyId = 'f0ad8b80-335f-4a6b-a62e-98c81dbe12c8';
@@ -32,8 +33,8 @@ function setTestEnvironment() {
     AETHEL_MAX_DAILY_REQUEST_LIMIT: '1000',
     AETHEL_MAX_OUTPUT_TOKENS: '4096',
     AETHEL_ENABLE_GROQ_FALLBACK: 'false',
-    AETHEL_GROQ_FALLBACK_MODEL: 'llama3-8b-8192',
-    AETHEL_GROQ_MODEL_MAP: '{"gpt-4o-mini":"openai/gpt-oss-20b"}',
+    AETHEL_GROQ_FALLBACK_MODEL: 'llama-3.1-8b-instant',
+    AETHEL_GROQ_MODEL_MAP: '{"gpt-4o-mini":"llama-3.1-8b-instant"}',
   });
 }
 
@@ -72,6 +73,16 @@ test('tool schemas include object type, properties, and required fields', () => 
   assert.deepEqual(selectTools().definitions, []);
 });
 
+test('Groq model router pins compatibility aliases and unknown IDs to active models', () => {
+  setTestEnvironment();
+  const cfg = configuration();
+  assert.equal(resolveGroqModel('gpt-4o', cfg), 'llama-3.1-70b-versatile');
+  assert.equal(resolveGroqModel('gpt-4o-mini', cfg), 'llama-3.1-70b-versatile');
+  assert.equal(resolveGroqModel('unmapped-client-model', cfg), 'llama-3.1-70b-versatile');
+  assert.equal(resolveGroqModel('llama-3.1-8b-instant', cfg), 'llama-3.1-8b-instant');
+  assert.equal(cfg.groqFallbackModel, 'llama-3.1-8b-instant');
+});
+
 test('agent uses Groq without an OpenAI key, stores history and tool step output', async () => {
   setTestEnvironment();
   const storedSessions = [];
@@ -94,7 +105,7 @@ test('agent uses Groq without an OpenAI key, stores history and tool step output
     assert.equal(parsed.hostname, 'api.groq.com');
     assert.equal(options.headers.Authorization, 'Bearer test-groq-secret');
     providerRequests.push(JSON.parse(options.body));
-    assert.equal(providerRequests.at(-1).model, 'llama-3.3-70b-versatile');
+    assert.equal(providerRequests.at(-1).model, 'llama-3.1-70b-versatile');
     assert.equal(providerRequests.at(-1).max_tokens, 2048);
     assert.equal(providerRequests.at(-1).temperature, 0.7);
     if (providerRequests.length === 1) {
@@ -213,7 +224,7 @@ test('chat routes directly to Groq using the mapped model without contacting Ope
     return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'fallback response' } }], usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 } });
   };
   const res = await invoke(chatHandler, {
-    model: 'gpt-4o-mini', messages: [{ role: 'user', content: { text: 'hello' } }],
+    model: 'unmapped-client-model', messages: [{ role: 'user', content: { text: 'hello' } }],
     temperature: 1.9, max_tokens: 9000, tools: [],
   }, { authorization: `Bearer ${apiToken}` });
 
@@ -221,7 +232,7 @@ test('chat routes directly to Groq using the mapped model without contacting Ope
   assert.equal(res.headers['x-aethel-provider'], 'groq');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].authorization, 'Bearer test-groq-secret');
-  assert.equal(calls[0].body.model, 'llama-3.3-70b-versatile');
+  assert.equal(calls[0].body.model, 'llama-3.1-70b-versatile');
   assert.equal(calls[0].body.max_tokens, 2048);
   assert.equal(calls[0].body.temperature, 0.7);
   assert.equal(calls[0].body.messages[0].content, 'hello');
@@ -286,7 +297,7 @@ test('agent returns a structured Groq provider error', async () => {
   });
 });
 
-test('agent retries unavailable Groq model with llama3-8b-8192 and logs the exact error body', async () => {
+test('agent retries unavailable Groq model with llama-3.1-8b-instant and logs the exact error body', async () => {
   setTestEnvironment();
   const requestedModels = [];
   const loggedErrors = [];
@@ -306,7 +317,7 @@ test('agent retries unavailable Groq model with llama3-8b-8192 and logs the exac
     const payload = JSON.parse(options.body);
     requestedModels.push(payload.model);
     if (requestedModels.length === 1) {
-      const body = '{"error":{"message":"The model `llama-3.3-70b-versatile` does not exist","type":"invalid_request_error","code":"model_not_found"}}';
+      const body = '{"error":{"message":"The model `llama-3.1-70b-versatile` does not exist","type":"invalid_request_error","code":"model_not_found"}}';
       return new Response(body, { status: 404, headers: { 'Content-Type': 'application/json' } });
     }
     return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'Fallback model response.' } }] });
@@ -314,12 +325,12 @@ test('agent retries unavailable Groq model with llama3-8b-8192 and logs the exac
   try {
     const res = await invoke(agentHandler, { task: 'Say hello', session_id: 'fallback-model', tools: [] }, { authorization: `Bearer ${apiToken}` });
     assert.equal(res.statusCode, 200, JSON.stringify(res.body));
-    assert.deepEqual(requestedModels, ['llama-3.3-70b-versatile', 'llama3-8b-8192']);
-    assert.equal(res.body.model, 'llama3-8b-8192');
+    assert.deepEqual(requestedModels, ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant']);
+    assert.equal(res.body.model, 'llama-3.1-8b-instant');
     const apiErrorLog = loggedErrors.find(line => line.startsWith('[aethel:groq_api_error] '));
     assert.ok(apiErrorLog);
     assert.equal(JSON.parse(apiErrorLog.slice('[aethel:groq_api_error] '.length)).response_body,
-      '{"error":{"message":"The model `llama-3.3-70b-versatile` does not exist","type":"invalid_request_error","code":"model_not_found"}}');
+      '{"error":{"message":"The model `llama-3.1-70b-versatile` does not exist","type":"invalid_request_error","code":"model_not_found"}}');
   } finally {
     console.error = originalConsoleError;
     console.warn = originalConsoleWarn;

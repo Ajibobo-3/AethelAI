@@ -1,4 +1,4 @@
-const { configuration, send, fail, database, bearer, hash, quotaResetsAt, startUsage, finishUsage } = require('../../_lib/gateway');
+const { configuration, resolveGroqModel, send, fail, database, bearer, hash, quotaResetsAt, startUsage, finishUsage } = require('../../_lib/gateway');
 
 const allowedFields = ['top_p', 'stop', 'response_format', 'tool_choice', 'parallel_tool_calls', 'seed'];
 
@@ -26,8 +26,8 @@ module.exports = async function handler(req, res) {
   if (requestedTokenLimit !== undefined && (!Number.isInteger(requestedTokenLimit) || requestedTokenLimit < 1)) {
     return fail(res, 400, 'invalid_token_limit', 'The output token limit must be a positive integer.');
   }
-  if (typeof input.model !== 'string' || !cfg.models.includes(input.model)) {
-    return fail(res, 400, 'model_not_allowed', `Choose one of the enabled models: ${cfg.models.join(', ')}.`);
+  if (typeof input.model !== 'string' || !input.model.trim() || input.model.length > 128) {
+    return fail(res, 400, 'invalid_model', 'Provide a model alias up to 128 characters.');
   }
   if (!Array.isArray(input.messages) || input.messages.length < 1 || input.messages.length > 50) {
     return fail(res, 400, 'invalid_messages', 'Provide between 1 and 50 chat messages.');
@@ -75,7 +75,7 @@ module.exports = async function handler(req, res) {
     return fail(res, 503, 'service_unavailable', 'Usage metering is temporarily unavailable.');
   }
 
-  const actualModel = cfg.groqModelMap[input.model] || input.model;
+  const actualModel = resolveGroqModel(input.model, cfg);
   const payload = { model: actualModel, messages, temperature: 0.7 };
   for (const field of allowedFields) if (input[field] !== undefined) payload[field] = input[field];
   payload.max_tokens = Math.min(requestedTokenLimit ?? cfg.maxOutputTokens, cfg.maxOutputTokens, 2048);

@@ -1,4 +1,6 @@
 const crypto = require('node:crypto');
+const GROQ_PRIMARY_MODEL = 'llama-3.1-70b-versatile';
+const GROQ_FALLBACK_MODEL = 'llama-3.1-8b-instant';
 
 function configuration() {
   return {
@@ -12,8 +14,8 @@ function configuration() {
     groqKey: process.env.GROQ_API_KEY,
     groqFallbackEnabled: /^true$/i.test((process.env.AETHEL_ENABLE_GROQ_FALLBACK || '').trim()),
     groqModelMap: parseGroqModelMap(process.env.AETHEL_GROQ_MODEL_MAP),
-    groqFallbackModel: process.env.AETHEL_GROQ_FALLBACK_MODEL || 'llama3-8b-8192',
-    models: (process.env.AETHEL_ALLOWED_MODELS || 'llama-3.3-70b-versatile').split(',').map(x => x.trim()).filter(Boolean),
+    groqFallbackModel: GROQ_FALLBACK_MODEL,
+    models: (process.env.AETHEL_ALLOWED_MODELS || GROQ_PRIMARY_MODEL).split(',').map(x => x.trim()).filter(Boolean),
     dailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_DAILY_REQUEST_LIMIT || '100', 10) || 100),
     maxDailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_MAX_DAILY_REQUEST_LIMIT || '10000', 10) || 10000),
     maxOutputTokens: Math.max(1, Number.parseInt(process.env.AETHEL_MAX_OUTPUT_TOKENS || '2048', 10) || 2048),
@@ -22,10 +24,8 @@ function configuration() {
 
 function parseGroqModelMap(value) {
   const defaultMap = {
-    'gpt-4o-mini': 'llama-3.3-70b-versatile',
-    'gpt-4o': 'llama-3.3-70b-versatile',
-    'llama3-70b-8192': 'llama-3.3-70b-versatile',
-    'llama-3.1-70b-versatile': 'llama-3.3-70b-versatile',
+    'gpt-4o-mini': GROQ_PRIMARY_MODEL,
+    'gpt-4o': GROQ_PRIMARY_MODEL,
   };
   if (!value) return defaultMap;
   try {
@@ -33,11 +33,22 @@ function parseGroqModelMap(value) {
     if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return defaultMap;
     const overrides = Object.fromEntries(Object.entries(parsed).filter(([from, to]) =>
       typeof from === 'string' && from.length > 0 && !Object.hasOwn(defaultMap, from) && typeof to === 'string' && to.length > 0
-    ));
+    ).map(([from, to]) => [from, to === GROQ_FALLBACK_MODEL ? GROQ_FALLBACK_MODEL : GROQ_PRIMARY_MODEL]));
     return { ...defaultMap, ...overrides };
   } catch {
     return defaultMap;
   }
+}
+
+function normalizeGroqModel(model) {
+  if (model === GROQ_PRIMARY_MODEL || model === GROQ_FALLBACK_MODEL) return model;
+  return GROQ_PRIMARY_MODEL;
+}
+
+function resolveGroqModel(model, cfg = configuration()) {
+  const mapped = cfg.groqModelMap[model];
+  if (mapped) return normalizeGroqModel(mapped);
+  return normalizeGroqModel(model);
 }
 
 function send(res, status, body) {
@@ -120,4 +131,4 @@ async function finishUsage(id, status, usage, model) {
   });
 }
 
-module.exports = { configuration, send, fail, database, bearer, hash, safeEqual, quotaResetsAt, startUsage, finishUsage };
+module.exports = { configuration, resolveGroqModel, send, fail, database, bearer, hash, safeEqual, quotaResetsAt, startUsage, finishUsage };

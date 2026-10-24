@@ -1,5 +1,5 @@
 const {
-  configuration, send, fail, database, bearer, hash, quotaResetsAt, startUsage, finishUsage,
+  configuration, resolveGroqModel, send, fail, database, bearer, hash, quotaResetsAt, startUsage, finishUsage,
 } = require('../../_lib/gateway');
 const { selectTools, executeTool } = require('../../_lib/agent-tools');
 
@@ -12,6 +12,7 @@ module.exports = async function handler(req, res) {
     return fail(res, 405, 'method_not_allowed', 'Use POST to run an agent task.');
   }
   const cfg = configuration();
+  const model = resolveGroqModel(cfg.models[0] || 'llama-3.1-70b-versatile', cfg);
   const apiKey = bearer(req);
   if (!apiKey) return fail(res, 401, 'unauthorized', 'Provide an Aethel API key as a Bearer token.');
   if (!cfg.supabaseUrl || !cfg.supabaseKey || !cfg.providerKey) {
@@ -44,7 +45,7 @@ module.exports = async function handler(req, res) {
 
   let usageId;
   try {
-    usageId = await startUsage(keyRow.id, cfg.models[0] || 'gpt-4o-mini', keyRow.daily_limit || cfg.dailyLimit);
+    usageId = await startUsage(keyRow.id, model, keyRow.daily_limit || cfg.dailyLimit);
   } catch (error) {
     if (error.detail?.includes('daily_limit_reached')) {
       return send(res, 429, { error: 'rate_limit_exceeded', message: 'Daily pilot limit reached.', resets_at: quotaResetsAt() });
@@ -83,8 +84,6 @@ module.exports = async function handler(req, res) {
     };
     await persist('running');
 
-    const requestedModel = cfg.models[0] || 'llama-3.3-70b-versatile';
-    const model = cfg.groqModelMap[requestedModel] || requestedModel;
     let completedOutput = null;
     let completed = false;
     let lastProvider = 'groq';
@@ -220,7 +219,7 @@ async function requestGroq(cfg, payload) {
     return { ...primary, provider: 'groq', model: payload.model };
   }
 
-  const fallbackModel = cfg.groqFallbackModel || 'llama3-8b-8192';
+  const fallbackModel = cfg.groqFallbackModel || 'llama-3.1-8b-instant';
   console.warn('[aethel:groq_model_fallback]', JSON.stringify({
     primary_model: payload.model,
     fallback_model: fallbackModel,
