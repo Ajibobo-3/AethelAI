@@ -12,6 +12,7 @@ function configuration() {
     groqKey: process.env.GROQ_API_KEY,
     groqFallbackEnabled: /^true$/i.test((process.env.AETHEL_ENABLE_GROQ_FALLBACK || '').trim()),
     groqModelMap: parseGroqModelMap(process.env.AETHEL_GROQ_MODEL_MAP),
+    groqFallbackModel: process.env.AETHEL_GROQ_FALLBACK_MODEL || 'llama3-8b-8192',
     models: (process.env.AETHEL_ALLOWED_MODELS || 'llama-3.3-70b-versatile').split(',').map(x => x.trim()).filter(Boolean),
     dailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_DAILY_REQUEST_LIMIT || '100', 10) || 100),
     maxDailyLimit: Math.max(1, Number.parseInt(process.env.AETHEL_MAX_DAILY_REQUEST_LIMIT || '10000', 10) || 10000),
@@ -23,13 +24,15 @@ function parseGroqModelMap(value) {
   const defaultMap = {
     'gpt-4o-mini': 'llama-3.3-70b-versatile',
     'gpt-4o': 'llama-3.3-70b-versatile',
+    'llama3-70b-8192': 'llama-3.3-70b-versatile',
+    'llama-3.1-70b-versatile': 'llama-3.3-70b-versatile',
   };
   if (!value) return defaultMap;
   try {
     const parsed = JSON.parse(value);
     if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return defaultMap;
     const overrides = Object.fromEntries(Object.entries(parsed).filter(([from, to]) =>
-      typeof from === 'string' && from.length > 0 && typeof to === 'string' && to.length > 0
+      typeof from === 'string' && from.length > 0 && !Object.hasOwn(defaultMap, from) && typeof to === 'string' && to.length > 0
     ));
     return { ...defaultMap, ...overrides };
   } catch {

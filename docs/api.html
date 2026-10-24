@@ -21,13 +21,13 @@
     <div class="eyebrow" style="margin-top:30px"><span class="eyebrow-line"></span> API QUICKSTART · V1</div>
     <h1>Make your first request.</h1>
     <p class="docs-lede">Aethel provides an OpenAI-compatible chat completions route with customer API keys, a daily request quota, and persistent usage records.</p>
-    <div class="docs-note"><strong>V1 is a private API pilot.</strong> It is not a self-serve paid launch. Aethel does not charge customers yet; provider usage is billed to the operator’s provider accounts. The primary provider’s rate limits still apply. An optional Groq fallback retries mapped requests after an HTTP 429 response.</div>
+    <div class="docs-note"><strong>V1 is a private API pilot.</strong> It is not a self-serve paid launch. Aethel does not charge customers yet; provider usage is billed to the operator’s Groq account. Groq rate limits still apply.</div>
 
     <h2>1. Configure the service</h2>
-    <ol><li>Create a Supabase project and run both migrations in order: <code>202610230001_aethel_gateway.sql</code>, then <code>202610240001_aethel_agent_beta.sql</code>.</li><li>Add the variables from <code>.env.example</code> to the Vercel project. Use your Supabase project URL and server-only secret key (<code>SUPABASE_SECRET_KEY</code>), a provider API key, and a long random <code>AETHEL_ADMIN_KEY</code>. Keep these secrets server-side.</li><li>Set <code>AETHEL_ALLOWED_MODELS</code> to the comma-separated models enabled for your provider account. The default is <code>gpt-4o-mini</code>.</li><li>Redeploy, then confirm <a href="/api/health">/api/health</a> reports <code>ready</code>.</li></ol>
+    <ol><li>Create a Supabase project and run both migrations in order: <code>202610230001_aethel_gateway.sql</code>, then <code>202610240001_aethel_agent_beta.sql</code>.</li><li>Add the variables from <code>.env.example</code> to the Vercel project. Use your Supabase project URL and server-only secret key (<code>SUPABASE_SECRET_KEY</code>), <code>GROQ_API_KEY</code>, and a long random <code>AETHEL_ADMIN_KEY</code>. Keep these secrets server-side.</li><li>Set <code>AETHEL_ALLOWED_MODELS</code> to the comma-separated public model IDs accepted by clients. The default inference model is <code>llama-3.3-70b-versatile</code>.</li><li>Redeploy, then confirm <a href="/api/health">/api/health</a> reports <code>ready</code>.</li></ol>
 
-    <h2>2. Optional: configure Groq fallback</h2>
-    <p>The fallback code can route a primary HTTP 429 to Groq when the request model has a configured mapping. Production currently has this fallback enabled. For another deployment, set <code>GROQ_API_KEY</code>, <code>AETHEL_ENABLE_GROQ_FALLBACK=true</code>, and <code>AETHEL_GROQ_MODEL_MAP</code>, then redeploy. A fallback request may incur charges on the Groq account. The default mapping is <code>gpt-4o-mini</code> → <code>openai/gpt-oss-20b</code>.</p>
+    <h2>2. Agent model fallback</h2>
+    <p>Agent runs use Groq. If the primary model is unavailable, the route retries with <code>llama3-8b-8192</code>. Set <code>AETHEL_GROQ_FALLBACK_MODEL</code> to choose another supported Groq model. Standard aliases such as <code>gpt-4o-mini</code> map to <code>llama-3.3-70b-versatile</code>.</p>
 
     <h2>3. Create a customer key</h2>
     <p>Run this from a trusted terminal. The admin key authorizes key creation. The generated customer key is returned once; store it securely.</p>

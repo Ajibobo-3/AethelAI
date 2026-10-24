@@ -1,18 +1,18 @@
 # Aethel AI — Inference Gateway
 
-Aethel is an OpenAI-compatible chat completion gateway deployed as Vercel Functions. It authenticates customer API keys, enforces an atomic per-key daily request quota, forwards requests to a configured OpenAI-compatible primary (with an optional, model-mapped Groq fallback on HTTP 429), and records provider-reported token usage in Supabase Postgres.
+Aethel is an OpenAI-compatible chat completion gateway deployed as Vercel Functions. It authenticates customer API keys, enforces an atomic per-key daily request quota, routes inference through Groq, and records provider-reported token usage in Supabase Postgres.
 
-The gateway can optionally retry a primary-provider HTTP 429 through a model-mapped Groq backup. The feature is opt-in by environment flag and is currently enabled in Vercel Production. Requests routed to Groq are billed to the configured provider account. This reduces reliance on a single provider but does not guarantee limit-free service. Distributed GPU routing and customer billing are not implemented. Treat the current V1 as a private API pilot; provider usage is paid from the operator’s provider accounts.
+Groq is the only inference provider currently configured in the gateway. Agent runs retry once with `llama3-8b-8192` if Groq reports that the primary model is unavailable. Requests are billed to the configured Groq account. Distributed GPU routing and customer billing are not implemented. Treat the current V1 as a private API pilot; provider usage is paid from the operator’s provider account.
 
 ## Configure the service
 
 1. Create a Supabase project.
 2. Apply both SQL migrations in order: `supabase/migrations/202610230001_aethel_gateway.sql`, then `supabase/migrations/202610240001_aethel_agent_beta.sql`.
 3. Add the variables from `.env.example` under Vercel Project Settings → Environment Variables. Use a Supabase project URL, its server-only secret key (`SUPABASE_SECRET_KEY`; the legacy `SUPABASE_SERVICE_ROLE_KEY` is also supported), a provider API key, and a strong random `AETHEL_ADMIN_KEY`. Store these as server-side secrets only.
-4. Set the `AETHEL_ALLOWED_MODELS` list to the model IDs available to your provider account. The default is `gpt-4o-mini`.
+4. Set `GROQ_API_KEY` and set the `AETHEL_ALLOWED_MODELS` list to the public model IDs accepted by your clients. The default inference model is `llama-3.3-70b-versatile`; `gpt-4o-mini` maps to that model for compatibility.
 5. Deploy the project and check `/api/health`.
 
-`AETHEL_DAILY_REQUEST_LIMIT` sets the default of 100 attempted requests per key per UTC day; each key stores its own cap. Requests that fail at the provider still count against the limit. `AETHEL_MAX_DAILY_REQUEST_LIMIT` sets the admin top-up ceiling (default 10,000). `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). `OPENAI_BASE_URL` can point to another OpenAI-compatible primary. Production currently has Groq fallback enabled. For other deployments, configure `GROQ_API_KEY`, set `AETHEL_ENABLE_GROQ_FALLBACK=true`, and map each public model to a supported Groq model in `AETHEL_GROQ_MODEL_MAP`. The default mapping sends `gpt-4o-mini` fallback requests to Groq’s `openai/gpt-oss-20b`.
+`AETHEL_DAILY_REQUEST_LIMIT` sets the default of 100 attempted requests per key per UTC day; each key stores its own cap. Requests that fail at the provider still count against the limit. `AETHEL_MAX_DAILY_REQUEST_LIMIT` sets the admin top-up ceiling (default 10,000). `AETHEL_MAX_OUTPUT_TOKENS` caps generated output (default 2,048). `AETHEL_GROQ_FALLBACK_MODEL` sets the agent fallback model (default `llama3-8b-8192`). Optional custom public model mappings can be supplied with `AETHEL_GROQ_MODEL_MAP`; standard compatibility aliases are pinned to active Groq model IDs in code.
 
 ## Issue and disable customer keys
 

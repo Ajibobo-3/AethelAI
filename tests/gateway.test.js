@@ -9,7 +9,7 @@ const apiToken = `aethel_live_${'a'.repeat(40)}`;
 const apiKeyId = 'f0ad8b80-335f-4a6b-a62e-98c81dbe12c8';
 const originalFetch = global.fetch;
 const savedEnvironment = {};
-for (const key of ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'AETHEL_ADMIN_KEY', 'AETHEL_ALLOWED_MODELS', 'AETHEL_DAILY_REQUEST_LIMIT', 'AETHEL_MAX_DAILY_REQUEST_LIMIT', 'AETHEL_ENABLE_GROQ_FALLBACK', 'AETHEL_GROQ_MODEL_MAP', 'GROQ_API_KEY']) {
+for (const key of ['SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'AETHEL_ADMIN_KEY', 'AETHEL_ALLOWED_MODELS', 'AETHEL_DAILY_REQUEST_LIMIT', 'AETHEL_MAX_DAILY_REQUEST_LIMIT', 'AETHEL_ENABLE_GROQ_FALLBACK', 'AETHEL_GROQ_MODEL_MAP', 'AETHEL_GROQ_FALLBACK_MODEL', 'GROQ_API_KEY']) {
   savedEnvironment[key] = process.env[key];
 }
 test.after(() => {
@@ -31,6 +31,8 @@ function setTestEnvironment() {
     AETHEL_DAILY_REQUEST_LIMIT: '100',
     AETHEL_MAX_DAILY_REQUEST_LIMIT: '1000',
     AETHEL_ENABLE_GROQ_FALLBACK: 'false',
+    AETHEL_GROQ_FALLBACK_MODEL: 'llama3-8b-8192',
+    AETHEL_GROQ_MODEL_MAP: '{"gpt-4o-mini":"openai/gpt-oss-20b"}',
   });
 }
 
@@ -234,6 +236,46 @@ test('agent returns a structured Groq provider error', async () => {
     upstream_status: 404,
     retryable: false,
   });
+});
+
+test('agent retries unavailable Groq model with llama3-8b-8192 and logs the exact error body', async () => {
+  setTestEnvironment();
+  const requestedModels = [];
+  const loggedErrors = [];
+  const originalConsoleError = console.error;
+  const originalConsoleWarn = console.warn;
+  console.error = (...args) => loggedErrors.push(args.join(' '));
+  console.warn = () => {};
+  global.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'db.test.invalid') {
+      if (parsed.pathname.endsWith('/aethel_api_keys')) return jsonResponse([{ id: apiKeyId, daily_limit: 8 }]);
+      if (parsed.pathname.endsWith('/rpc/aethel_start_request')) return jsonResponse('usage-model-fallback');
+      if (parsed.pathname.endsWith('/agent_sessions') && (!options.method || options.method === 'GET')) return jsonResponse([]);
+      if (parsed.pathname.endsWith('/agent_sessions') && options.method === 'POST') return new Response(null, { status: 204 });
+      if (parsed.pathname.endsWith('/aethel_usage')) return new Response(null, { status: 204 });
+    }
+    const payload = JSON.parse(options.body);
+    requestedModels.push(payload.model);
+    if (requestedModels.length === 1) {
+      const body = '{"error":{"message":"The model `llama-3.3-70b-versatile` does not exist","type":"invalid_request_error","code":"model_not_found"}}';
+      return new Response(body, { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+    return jsonResponse({ choices: [{ message: { role: 'assistant', content: 'Fallback model response.' } }] });
+  };
+  try {
+    const res = await invoke(agentHandler, { task: 'Say hello', session_id: 'fallback-model', tools: [] }, { authorization: `Bearer ${apiToken}` });
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.deepEqual(requestedModels, ['llama-3.3-70b-versatile', 'llama3-8b-8192']);
+    assert.equal(res.body.model, 'llama3-8b-8192');
+    const apiErrorLog = loggedErrors.find(line => line.startsWith('[aethel:groq_api_error] '));
+    assert.ok(apiErrorLog);
+    assert.equal(JSON.parse(apiErrorLog.slice('[aethel:groq_api_error] '.length)).response_body,
+      '{"error":{"message":"The model `llama-3.3-70b-versatile` does not exist","type":"invalid_request_error","code":"model_not_found"}}');
+  } finally {
+    console.error = originalConsoleError;
+    console.warn = originalConsoleWarn;
+  }
 });
 
 test('admin top-up calls the atomic Supabase procedure and returns the new cap', async () => {

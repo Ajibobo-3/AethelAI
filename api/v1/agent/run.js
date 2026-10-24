@@ -213,8 +213,39 @@ module.exports = async function handler(req, res) {
 };
 
 async function requestGroq(cfg, payload) {
-  const attempt = await requestProvider(cfg.providerUrl, cfg.providerKey, payload);
-  return { ...attempt, provider: 'groq', model: payload.model };
+  const primary = await requestProvider(cfg.providerUrl, cfg.providerKey, payload);
+  if (!primary.networkError && !primary.response.ok) logGroqError(payload.model, primary);
+  if (primary.networkError || !isModelUnavailable(primary)) {
+    return { ...primary, provider: 'groq', model: payload.model };
+  }
+
+  const fallbackModel = cfg.groqFallbackModel || 'llama3-8b-8192';
+  console.warn('[aethel:groq_model_fallback]', JSON.stringify({
+    primary_model: payload.model,
+    fallback_model: fallbackModel,
+    upstream_status: primary.response.status,
+  }));
+  const fallback = await requestProvider(cfg.providerUrl, cfg.providerKey, { ...payload, model: fallbackModel });
+  if (!fallback.networkError && !fallback.response.ok) logGroqError(fallbackModel, fallback);
+  return { ...fallback, provider: 'groq', model: fallbackModel };
+}
+
+function isModelUnavailable(attempt) {
+  if (attempt.response?.status === 404) return true;
+  const error = attempt.result?.error;
+  const code = typeof error?.code === 'string' ? error.code.toLowerCase() : '';
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+  return ['model_not_found', 'model_unavailable', 'model_decommissioned'].includes(code)
+    || /model.{0,30}(not found|unavailable|decommissioned)|(?:not found|unavailable).{0,30}model/.test(message);
+}
+
+function logGroqError(model, attempt) {
+  console.error('[aethel:groq_api_error]', JSON.stringify({
+    provider: 'groq',
+    model,
+    status: attempt.response.status,
+    response_body: attempt.errorBody,
+  }));
 }
 
 async function requestProvider(baseUrl, apiKey, payload) {
@@ -225,9 +256,10 @@ async function requestProvider(baseUrl, apiKey, payload) {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(55000),
     });
+    const errorBody = await response.text();
     let result;
-    try { result = await response.json(); } catch (_) { result = null; }
-    return { response, result, networkError: false };
+    try { result = JSON.parse(errorBody); } catch (_) { result = null; }
+    return { response, result, errorBody, networkError: false };
   } catch (_) {
     return { response: null, result: null, networkError: true };
   }
